@@ -26,6 +26,37 @@
       ],
       "metadata_only_patterns": []
     },
+    "api_policy": {
+      "off_peak_only": true,
+      "fail_closed": true,
+      "billing_timezone": "Asia/Shanghai",
+      "peak_windows": [
+        "09:00-12:00",
+        "14:00-18:00"
+      ],
+      "peak_price_multiplier": 2.0,
+      "off_peak_price_multiplier": 1.0,
+      "off_peak_start_guard_minutes": 1,
+      "off_peak_end_guard_minutes": 10,
+      "queue_drain_interval_seconds": 30,
+      "max_starts_per_minute": 2,
+      "policy_version": "",
+      "effective_from": ""
+    },
+    "budget": {
+      "daily_api_budget_cny": 0,
+      "monthly_api_budget_cny": 0,
+      "daily_api_call_limit": 0,
+      "monthly_api_call_limit": 0
+    },
+    "pricing": {
+      "flash_model": "",
+      "pro_model": "",
+      "flash_input_cny_per_1k": 0.001,
+      "flash_output_cny_per_1k": 0.002,
+      "pro_input_cny_per_1k": 0.01,
+      "pro_output_cny_per_1k": 0.02
+    },
     "mongodb": {
       "host": "localhost",
       "port": 27017,
