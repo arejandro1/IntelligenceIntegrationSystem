@@ -1,0 +1,64 @@
+# M2: 美国涉华公开信息来源注册表
+# SourceRegistry 唯一数据源，所有来源必须在此注册
+# M4 启用首批 8 个来源时将 enabled 改为 true
+
+sources:
+  - source_id: voa
+    name: Voice of America (中文)
+    source_type: rss
+    channel_urls:
+      - https://www.voachinese.com/api/zhengce
+    enabled: false
+    is_priority: true
+    crawler_task: task_crawl_voanews
+    tags: [美国, 官方媒体, 中文]
+
+  - source_id: bbc
+    name: BBC News
+    source_type: rss
+    channel_urls:
+      - https://feeds.bbci.co.uk/news/world/asia/china/rss.xml
+    enabled: false
+    is_priority: true
+    crawler_task: task_crawl_bbc
+    tags: [英国, 公共广播, 英文]
+
+  - source_id: nhk
+    name: NHK World
+    source_type: rss
+    channel_urls:
+      - https://www3.nhk.or.jp/nhkworld/en/news/tags/36.xml
+    enabled: false
+    is_priority: false
+    crawler_task: task_crawl_nhk_ic
+    tags: [日本, 公共广播, 英文]
+
+  - source_id: france24
+    name: France24
+    source_type: rss
+    channel_urls:
+      - https://www.france24.com/en/tag/china/rss
+    enabled: false
+    is_priority: false
+    crawler_task: task_crawl_france24
+    tags: [法国, 国际媒体, 英文]
+
+  - source_id: dw
+    name: Deutsche Welle
+    source_type: rss
+    channel_urls:
+      - https://rss.dw.com/rdf/rss-en-china
+    enabled: false
+    is_priority: false
+    crawler_task: task_crawl_dw
+    tags: [德国, 国际媒体, 英文]
+
+  - source_id: rfi
+    name: RFI English
+    source_type: rss
+    channel_urls:
+      - https://www.rfi.fr/en/china/rss
+    enabled: false
+    is_priority: false
+    crawler_task: task_crawl_rfi
+    tags: [法国, 国际媒体, 英文]

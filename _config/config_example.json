@@ -13,6 +13,19 @@
         "ai_worker": 1
       }
     },
+    "prefilter": {
+      "enabled": true,
+      "min_content_length": 10,
+      "require_title": true,
+      "reject_patterns": [
+        "赌博",
+        "gambling",
+        "casino",
+        "色情",
+        "porn"
+      ],
+      "metadata_only_patterns": []
+    },
     "mongodb": {
       "host": "localhost",
       "port": 27017,

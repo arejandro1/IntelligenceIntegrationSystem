@@ -1,0 +1,78 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "ChinaWatch Source Registry Schema",
+    "description": "来源注册表数据文件 JSON Schema（M2）",
+    "type": "object",
+    "required": [
+        "sources"
+    ],
+    "properties": {
+        "sources": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "required": [
+                    "source_id",
+                    "name",
+                    "source_type"
+                ],
+                "properties": {
+                    "source_id": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9_]+$"
+                    },
+                    "name": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "source_type": {
+                        "enum": [
+                            "rss",
+                            "list_page",
+                            "api",
+                            "other"
+                        ]
+                    },
+                    "channel_urls": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "uri"
+                        }
+                    },
+                    "enabled": {
+                        "type": "boolean"
+                    },
+                    "is_priority": {
+                        "type": "boolean"
+                    },
+                    "crawler_task": {
+                        "type": "string"
+                    },
+                    "concurrency": {
+                        "type": "object",
+                        "properties": {
+                            "normal": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 2
+                            },
+                            "playwright": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1
+                            }
+                        }
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
