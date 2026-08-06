@@ -1,0 +1,9 @@
+# 完整开发环境依赖（M1）
+# 包含所有生产依赖 + VectorDB/ML + 开发工具
+# 以 requirements.txt 为完整依赖的单一源
+
+-r requirements.txt
+-r AIClientCenter/requirements.txt
+-r MyPythonUtility/requirements.txt
+-r IntelligenceCrawler/requirements.txt
+-r PyLoggingBackend/requirements.txt

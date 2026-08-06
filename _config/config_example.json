@@ -1,21 +1,30 @@
 {
   "intelligence_hub": {
     "ai_analysis_thread": 1,
-
+    "china_watch": {
+      "api_enabled": false,
+      "api_dry_run": true,
+      "use_legacy_ai_worker": false,
+      "use_off_peak_drainer": false,
+      "crawler_concurrency": {
+        "normal": 2,
+        "playwright": 1,
+        "pdf_worker": 1,
+        "ai_worker": 1
+      }
+    },
     "mongodb": {
       "host": "localhost",
       "port": 27017,
       "user": "",
       "password": ""
     },
-
     "systemd_watchdog": {
       "enabled": true,
       "interval_sec": 10
     },
-
     "vectordb": {
-      "enabled": true,
+      "enabled": false,
       "vector_db_path": "vectordb",
       "embedding_model_name": "BAAI/bge-m3",
       "stores": [
@@ -34,33 +43,27 @@
       ]
     }
   },
-
   "intelligence_hub_web_service": {
-
     "service": {
       "listen_ip": "0.0.0.0",
       "listen_port": 5000,
       "host_url": "http://127.0.0.1:5000"
     },
-
     "rpc_api": {
       "tokens": [
         "2b9d053e-e62b-4243-9e0f-a363560a6017"
       ]
     },
-
     "collector": {
       "tokens": [
-      "a9f2068b-aaa9-48fd-b6d5-d219c8da6090"
+        "a9f2068b-aaa9-48fd-b6d5-d219c8da6090"
       ]
     },
-
     "processor": {
       "tokens": [
         "dd698933-2824-4181-8d50-af4a5f385864"
       ]
     },
-
     "public_search": {
       "mongo_max_per_page": 20,
       "mongo_max_page": 5,
@@ -76,32 +79,24 @@
       "max_concurrent_vector": 5
     }
   },
-
   "monitor": {
     "update_interval_sec": 5.0,
     "thread_stats_interval_sec": 10.0
   },
-
   "ai_client_center": {
     "sqlite_db_file": "ai_client_state_log.db",
     "heartbeat_interval_sec": 30,
     "heartbeat_grace_sec": 120
   },
-
   "collector": {
     "submit_ihub_url": "http://127.0.0.1:5000",
-
-    "cn_site_proxy": {
-    },
-
+    "cn_site_proxy": {},
     "global_site_proxy": {
       "http": "http://127.0.0.1:10809",
       "https": "http://127.0.0.1:10809"
     },
-
     "default_token": "a9f2068b-aaa9-48fd-b6d5-d219c8da6090"
   },
-
   "processor": {
     "default_token": "dd698933-2824-4181-8d50-af4a5f385864"
   }
