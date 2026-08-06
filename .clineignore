@@ -1,0 +1,118 @@
+# ============================================================
+# Cline 忽略规则（M0）
+# 用途：排除噪音文件，不排除需要读取的源码/子模块
+# 说明：子模块禁止修改，但 Plan 阶段仍需读取，因此不排除
+# ============================================================
+
+# --- 虚拟环境 ---
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+__pypackages__/
+
+# --- Python 缓存 ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# --- 密钥与真实配置 ---
+.env
+.env.*
+!.env.example
+secrets/
+*.key
+*.pem
+_config/config.json
+_config/ai_client_config.py
+_config/Authentication.db
+_config/config.local.json
+AIClientCenter/ai_client_config.py
+
+# --- 数据库 ---
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+
+# --- 日志 ---
+_log/
+_log/**
+logs/
+logs/**
+*.log
+
+# --- 下载文件 ---
+downloads/
+downloads/**
+.downloads/
+
+# --- PDF 原始文件 ---
+*.pdf
+!doc/*.pdf
+pdf_cache/
+pdf_cache/**
+
+# --- 模型文件 ---
+models/
+models/**
+*.gguf
+*.onnx
+*.pt
+*.pth
+*.safetensors
+*.bin
+*.model
+
+# --- 构建产物 ---
+build/
+dist/
+*.egg-info/
+.eggs/
+installer/
+*.spec
+*.manifest
+target/
+site/
+instance/
+.webassets-cache
+templates/generated
+
+# --- 导出/产物目录 ---
+_export/
+_export/**
+_products/
+_products/**
+
+# --- 临时/杂项 ---
+.cache
+.pdm.toml
+.pdm-python
+.pdm-build/
+celerybeat-schedule
+celerybeat.pid
+.ipynb_checkpoints/
+profile_default/
+
+# --- 注意：以下文件/目录不得排除（Plan 阶段需读取）---
+# IntelligenceHub.py
+# ServiceComponent/
+# Workflow/
+# CrawlTasks/
+# AIClientCenter/
+# IntelligenceCrawler/
+# VectorDB/
+# MyPythonUtility/
+# PyLoggingBackend/

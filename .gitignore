@@ -129,6 +129,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
@@ -183,6 +185,11 @@ requirements.txt.bak
 # config file
 config.json
 ai_client_config.py
+_config/config.json
+_config/ai_client_config.py
+
+# 示例配置不忽略（保留可提交的示例）
+!_config/config_example.json
 
 # Not-project folders
 _log
@@ -191,8 +198,21 @@ _config
 _export
 _products
 
+# 但示例配置必须保留
+!_config/config_example.json
+
 # Generated files
 templates/generated
 Authentication.db
 conversation
 crawl_record
+
+# China Watch（M0 追加）
+# 密钥与敏感信息
+secrets/
+*.key
+*.pem
+
+# 日志目录（补充，防止漏配）
+logs/
+_log/
