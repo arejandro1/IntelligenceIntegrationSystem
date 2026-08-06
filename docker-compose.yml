@@ -1,0 +1,64 @@
+# M7: China Watch 四容器 Docker Compose
+# 用于群晖 DS920+ 生产部署
+services:
+  china-watch-mongo:
+    image: mongo:7
+    container_name: china-watch-mongo
+    restart: unless-stopped
+    user: "1000:1000"
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  china-watch-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile.hub
+    container_name: china-watch-hub
+    restart: unless-stopped
+    user: "1000:1000"
+    ports:
+      - "127.0.0.1:5000:5000"
+    env_file:
+      - .env
+    depends_on:
+      china-watch-mongo:
+        condition: service_healthy
+    volumes:
+      - ./_data:/app/_data
+      - ./_log:/app/_log
+
+  china-watch-crawler:
+    build:
+      context: .
+      dockerfile: Dockerfile.crawler
+    container_name: china-watch-crawler
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - .env
+    depends_on:
+      china-watch-hub:
+        condition: service_started
+
+  china-watch-notifier:
+    build:
+      context: .
+      dockerfile: Dockerfile.notifier
+    container_name: china-watch-notifier
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - .env
+    depends_on:
+      china-watch-hub:
+        condition: service_started
+
+volumes:
+  mongo_data:
