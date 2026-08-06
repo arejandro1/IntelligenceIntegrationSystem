@@ -8,7 +8,7 @@ sources:
     source_type: rss
     channel_urls:
       - https://www.voachinese.com/api/zhengce
-    enabled: false
+    enabled: true
     is_priority: true
     crawler_task: task_crawl_voanews
     tags: [美国, 官方媒体, 中文]
@@ -18,7 +18,7 @@ sources:
     source_type: rss
     channel_urls:
       - https://feeds.bbci.co.uk/news/world/asia/china/rss.xml
-    enabled: false
+    enabled: true
     is_priority: true
     crawler_task: task_crawl_bbc
     tags: [英国, 公共广播, 英文]
@@ -28,7 +28,7 @@ sources:
     source_type: rss
     channel_urls:
       - https://www3.nhk.or.jp/nhkworld/en/news/tags/36.xml
-    enabled: false
+    enabled: true
     is_priority: false
     crawler_task: task_crawl_nhk_ic
     tags: [日本, 公共广播, 英文]
@@ -38,7 +38,7 @@ sources:
     source_type: rss
     channel_urls:
       - https://www.france24.com/en/tag/china/rss
-    enabled: false
+    enabled: true
     is_priority: false
     crawler_task: task_crawl_france24
     tags: [法国, 国际媒体, 英文]
@@ -48,7 +48,7 @@ sources:
     source_type: rss
     channel_urls:
       - https://rss.dw.com/rdf/rss-en-china
-    enabled: false
+    enabled: true
     is_priority: false
     crawler_task: task_crawl_dw
     tags: [德国, 国际媒体, 英文]
@@ -58,7 +58,27 @@ sources:
     source_type: rss
     channel_urls:
       - https://www.rfi.fr/en/china/rss
-    enabled: false
+    enabled: true
     is_priority: false
     crawler_task: task_crawl_rfi
     tags: [法国, 国际媒体, 英文]
+
+  - source_id: aljazeera
+    name: Al Jazeera
+    source_type: rss
+    channel_urls:
+      - https://www.aljazeera.com/xml/rss/all.xml
+    enabled: true
+    is_priority: false
+    crawler_task: task_crawl_aljazeera
+    tags: [卡塔尔, 国际媒体, 英文]
+
+  - source_id: abc_au
+    name: ABC News (Australia)
+    source_type: rss
+    channel_urls:
+      - https://www.abc.net.au/news/feed/51120/rss.xml
+    enabled: true
+    is_priority: false
+    crawler_task: task_crawl_abc
+    tags: [澳大利亚, 公共广播, 英文]
