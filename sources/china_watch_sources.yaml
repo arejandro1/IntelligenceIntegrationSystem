@@ -82,3 +82,93 @@ sources:
     is_priority: false
     crawler_task: task_crawl_abc
     tags: [澳大利亚, 公共广播, 英文]
+
+  - source_id: cbc
+    name: CBC News
+    source_type: rss
+    channel_urls:
+      - https://www.cbc.ca/cmlink/rss-topstories
+    enabled: true
+    is_priority: false
+    crawler_task: task_crawl_cbc
+    tags: [加拿大, 公共广播, 英文]
+
+  - source_id: chinanews
+    name: China News Service
+    source_type: rss
+    channel_urls:
+      - https://www.ecns.cn/rss/rss.xml
+    enabled: true
+    is_priority: true
+    crawler_task: task_crawl_chinanews
+    tags: [中国, 官方媒体, 英文]
+
+  - source_id: elpais
+    name: El País
+    source_type: rss
+    channel_urls:
+      - https://feeds.elpais.com/mrss-s/pages/ep/site/english.elpais.com/portada
+    enabled: true
+    is_priority: false
+    crawler_task: task_crawl_elpais
+    tags: [西班牙, 国际媒体, 英文]
+
+  - source_id: investing
+    name: Investing.com
+    source_type: rss
+    channel_urls:
+      - https://www.investing.com/rss/news_25.rss
+    enabled: true
+    is_priority: false
+    crawler_task: task_crawl_investing
+    tags: [财经, 国际, 英文]
+
+  - source_id: news_cn
+    name: China News (中文)
+    source_type: rss
+    channel_urls:
+      - http://www.chinanews.com.cn/rss/scroll-news.xml
+    enabled: true
+    is_priority: true
+    crawler_task: task_crawl_news_cn
+    tags: [中国, 官方媒体, 中文]
+
+  - source_id: ntv
+    name: NTV Japan
+    source_type: rss
+    channel_urls:
+      - https://www.ntv.co.jp/englishnews/feed/
+    enabled: true
+    is_priority: false
+    crawler_task: task_crawl_ntv
+    tags: [日本, 商业广播, 英文]
+
+  - source_id: tass
+    name: TASS News
+    source_type: rss
+    channel_urls:
+      - https://tass.com/rss/v2.xml
+    enabled: true
+    is_priority: true
+    crawler_task: task_crawl_tass
+    tags: [俄罗斯, 官方媒体, 英文]
+
+  - source_id: yna
+    name: Yonhap News
+    source_type: rss
+    channel_urls:
+      - https://en.yna.co.kr/RSS/headline.xml
+    enabled: true
+    is_priority: false
+    crawler_task: task_crawl_yna
+    tags: [韩国, 官方媒体, 英文]
+
+  - source_id: aa
+    name: Anadolu Agency
+    source_type: rss
+    channel_urls:
+      - https://www.aa.com.tr/en/rss/default?cat=live
+    enabled: true
+    is_priority: false
+    crawler_task: task_crawl_aa
+    tags: [土耳其, 官方媒体, 英文]
