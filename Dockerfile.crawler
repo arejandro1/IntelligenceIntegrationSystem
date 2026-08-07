@@ -1,0 +1,31 @@
+# China Watch Crawler 容器（M7）
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# 系统依赖（含 Playwright 浏览器依赖）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ curl wget \
+    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
+    libcups2 libdrm2 libxkbcommon0 libxcomposite1 \
+    libxdamage1 libxfixes3 libxrandr2 libgbm1 \
+    libasound2 libpango-1.0-0 libcairo2 \
+    fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
+
+# 复制依赖清单
+COPY requirements-server.txt ./
+RUN pip install --no-cache-dir -r requirements-server.txt
+
+# 安装 Playwright Chromium
+RUN playwright install chromium --with-deps || true
+
+# 复制项目
+COPY . .
+
+# 非 root 用户
+RUN useradd --create-home --uid 1000 chinawatch \
+    && chown -R chinawatch:chinawatch /app
+USER chinawatch
+
+CMD ["python", "CrawlerServiceEngine.py"]

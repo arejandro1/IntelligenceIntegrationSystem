@@ -1,0 +1,24 @@
+# China Watch Notifier 容器（M7）
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# 系统依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 复制依赖清单
+COPY requirements-server.txt ./
+RUN pip install --no-cache-dir -r requirements-server.txt
+
+# 复制项目
+COPY . .
+
+# 非 root 用户
+RUN useradd --create-home --uid 1000 chinawatch \
+    && chown -R chinawatch:chinawatch /app
+USER chinawatch
+
+# 推送服务启动（M6 阶段 LogNotifier 作为默认实现）
+CMD ["python", "-c", "from ServiceComponent.PushNotifier import PushNotifier; p=PushNotifier(); print('China Watch Notifier started.')"]
