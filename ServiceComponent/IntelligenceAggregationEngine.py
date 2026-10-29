@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional, Tuple, List
 
 from GlobalConfig import EXPORT_PATH
 from VectorDB.VectorDBClient import VectorDBClient
+from ServiceComponent.ClusterWriteback import writeback_cluster_appendix
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +144,7 @@ class IntelligenceAggregationEngine:
     - Ensure plan exists
     - Trigger offline runs (hourly by IIS scheduler)
     - Read latest offline / online state
-    - (Placeholder) Appendix writeback hook (NOT implemented now)
+    - Write cluster membership back to MongoDB archive APPENDIX after offline run
     """
 
     def __init__(
@@ -177,10 +178,12 @@ class IntelligenceAggregationEngine:
 
     def trigger_offline(self, overrides: Optional[Dict[str, Any]] = None,
                         time_range: Optional[Tuple[float, float]] = None,
-                        doc_fetcher: callable = None) -> str:
+                        doc_fetcher: callable = None,
+                        mongo_writer: Any = None) -> str:
         """
         Trigger offline aggregation and return job_id.
-        同时启动后台线程监控任务，并在完成时生成 Snapshot 文件。
+        同时启动后台线程监控任务：完成时生成 Snapshot 文件；
+        mongo_writer 非 None 时把 doc→cluster 归属写回 Mongo 归档库 APPENDIX。
         """
         res = self.client.run_aggregation_plan(self.plan_spec.plan_id, overrides=overrides, time_range=time_range)
         job_id = res.get("job_id")
@@ -190,15 +193,16 @@ class IntelligenceAggregationEngine:
         if job_id:
             threading.Thread(
                 target=self._monitor_offline_job,
-                args=(job_id, doc_fetcher),
+                args=(job_id, doc_fetcher, mongo_writer),
                 daemon=True
             ).start()
 
         return job_id
 
-    def _monitor_offline_job(self, job_id: str, doc_fetcher: callable):
+    def _monitor_offline_job(self, job_id: str, doc_fetcher: callable, mongo_writer: Any = None):
         """
-        临时线程：轮询作业状态并生成文本分析报告
+        临时线程：轮询作业状态并生成文本分析报告；
+        完成时把聚类归属写回 Mongo 归档库（best-effort，失败只记日志）。
         """
         logger.info(f"Started monitoring offline aggregation job: {job_id}")
         while True:
@@ -209,6 +213,7 @@ class IntelligenceAggregationEngine:
                 if status == "completed":
                     logger.info(f"Job {job_id} completed. Generating text snapshot...")
                     self._generate_snapshot(job_id, doc_fetcher)
+                    self._writeback_completed_offline(mongo_writer)
                     break
                 elif status == "failed":
                     logger.error(f"Job {job_id} failed. Reason: {job_info.get('error')}")
@@ -218,6 +223,25 @@ class IntelligenceAggregationEngine:
             except Exception as e:
                 logger.error(f"Error monitoring job {job_id}: {str(e)}")
                 time.sleep(5)
+
+    def _writeback_completed_offline(self, mongo_writer: Any) -> None:
+        """离线聚合完成后，把 doc→cluster 归属写回 MongoDB 归档库 APPENDIX。
+
+        best-effort：mongo_writer 未注入 / 结果为空 / VectorDB 暂不可达 /
+        Mongo 写失败都只记日志，绝不向上抛出（本方法运行在监控守护线程内）。
+        """
+        if mongo_writer is None:
+            return
+        try:
+            latest = self.get_latest_offline() or {}
+            if not latest or latest.get("version") is None:
+                logger.warning("Offline job completed but latest offline result missing; "
+                               "skip appendix writeback.")
+                return
+            stats = self.writeback_appendix(latest, mongo_writer)
+            logger.info(f"Appendix writeback after offline aggregation: {stats}")
+        except Exception as e:
+            logger.error(f"Appendix writeback failed: {e}", exc_info=True)
 
     def _generate_snapshot(self, job_id: str, doc_fetcher: callable):
         try:
@@ -709,15 +733,34 @@ class IntelligenceAggregationEngine:
         return out
 
     # ----------------------------
-    # Placeholder: appendix writeback (NOT implemented)
+    # Appendix writeback (MongoDB)
     # ----------------------------
 
-    def writeback_appendix_placeholder(self, offline_result: Dict[str, Any]) -> None:
-        """
-        Placeholder only. No writeback implementation now.
+    def writeback_appendix(self, offline_result: Dict[str, Any], mongo_writer: Any) -> Dict[str, int]:
+        """把离线聚合结果的 doc→cluster 归属写回 MongoDB 归档文档 APPENDIX。
 
-        offline_result should include:
-          plan_id, version, time_range, doc_to_cluster, clusters, collection_name
+        薄封装：从 offline_result 提取 plan_id/version/time_range/collection_name/
+        doc_to_cluster/clusters/base_version，委托 ClusterWriteback.writeback_cluster_appendix
+        执行（全仓唯一真实实现，字段语义见其模块 docstring）。
+
+        :param offline_result: get_latest_offline() 的返回（VectorDB 离线聚合结果）。
+        :param mongo_writer: MongoDBStorage（绑定 intelligence_archived 集合）。
+        :return: 统计 dict {'total', 'updated', 'failed', 'skipped'}；
+                 任何异常只记日志并返回零统计，绝不抛出。
         """
-        # TODO: implement later
-        return
+        try:
+            result = offline_result or {}
+            time_range_raw = result.get("time_range")
+            return writeback_cluster_appendix(
+                mongo_writer,
+                plan_id=result.get("plan_id") or self.plan_spec.plan_id,
+                version=result.get("version"),
+                time_range=tuple(time_range_raw) if time_range_raw else None,
+                collection_name=result.get("collection_name") or self.plan_spec.collection_name,
+                doc_to_cluster=result.get("doc_to_cluster") or {},
+                clusters=result.get("clusters") or {},
+                base_version=result.get("base_version"),
+            )
+        except Exception as e:
+            logger.error(f"writeback_appendix failed: {e}", exc_info=True)
+            return {"total": 0, "updated": 0, "failed": 0, "skipped": 0}

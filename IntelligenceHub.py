@@ -1795,10 +1795,13 @@ class IntelligenceHub:
 
             # 3. 触发 VectorDB 离线聚合
             # 如果近期有数据，time_range_to_use 仍为 None，底层自动取 [Now - 24h, Now]
+            # mongo_writer 注入归档库：任务完成后由引擎监控线程把 doc→cluster 归属
+            # 写回 ArchivedData.APPENDIX（__CLUSTER_CURRENT__/__CLUSTER_HISTORY__）。
             job_id = self.aggregation_engine_summary.trigger_offline(
                 overrides=None,
                 time_range=time_range_to_use,
-                doc_fetcher=doc_fetcher
+                doc_fetcher=doc_fetcher,
+                mongo_writer=self.mongo_db_archive
             )
 
             if job_id:

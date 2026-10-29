@@ -440,6 +440,9 @@ APPENDIX_TRANSLATE_FAILED   = '__TRANSLATE_FAILED__'    # 翻译失败重试计�
 APPENDIX_TRANSLATE_PARTIAL  = '__TRANSLATE_PARTIAL__'   # 部分字段翻译成功，留待重试
 APPENDIX_TRANSLATE_DEAD     = '__TRANSLATE_DEAD__'      # 翻译死信标记（超过重试上限，backfill 跳过）
 
+APPENDIX_CLUSTER_CURRENT    = '__CLUSTER_CURRENT__'     # 当前聚类归属（最近一次离线聚合写回，覆盖式）
+APPENDIX_CLUSTER_HISTORY    = '__CLUSTER_HISTORY__'     # 聚类归属历史（按版本追加，长度受 history_keep 截断）
+
 
 ARCHIVED_FLAG_DROP = 'D'
 ARCHIVED_FLAG_ERROR = 'E'

@@ -2056,7 +2056,11 @@ class IntelligenceHubWebService:
                 def doc_fetcher(uuids):
                     return self.intelligence_hub.get_intelligence(uuids, light_weight=True)
 
-                job_id = agg_engine.trigger_offline(time_range=time_range, doc_fetcher=doc_fetcher)
+                # mongo_writer 注入归档库：手动触发与定时任务一样，完成后写回聚类归属
+                job_id = agg_engine.trigger_offline(
+                    time_range=time_range,
+                    doc_fetcher=doc_fetcher,
+                    mongo_writer=self.intelligence_hub.mongo_db_archive)
                 return jsonify({
                     "status": "success",
                     "job_id": job_id,
