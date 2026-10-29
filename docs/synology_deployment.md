@@ -45,6 +45,14 @@
 - 管理界面仅内网访问或通过反向代理保护；
 - 所有应用容器使用非 root 用户运行（user: "1000:1000"）。
 
+> **注意：本容器编排不包含 VectorDB 服务。** bge-m3 模型与 ChromaDB 索引对群晖
+> 内存压力过大，docker-compose 仅含 hub / crawler / notifier（+ 可选 mongo）。
+> 因此容器化部署下**语义搜索、相似推荐、情报聚类功能不可用**
+> （Hub 侧 vectordb 会显示 disabled/degraded，属预期）。
+> 如需这些能力，请在另一台资源充足的机器上运行
+> `python -m VectorDB.VectorDBBService --db-path ... --model ...`，
+> 并将 Hub 配置 `intelligence_hub.vectordb.*` 指向该服务。
+
 ## 3. 部署步骤（模式 A：外部 MongoDB，DS920+ 默认）
 
 ```bash

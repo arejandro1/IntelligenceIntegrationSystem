@@ -184,8 +184,9 @@ playwright install chromium
 # ------------------------------------------------------------------------------------
 
 # Run the Vector DB (Optional)
-python VectorDB/VectorDBBService.py \
-    --db-path D:\Code\IntelligenceIntegrationSystem\_data\VectorDB 
+# 必须用 -m 方式启动；直接 python VectorDB/VectorDBBService.py 会因顶层包导入而失败
+python -m VectorDB.VectorDBBService ^
+    --db-path D:\Code\IntelligenceIntegrationSystem\_data\VectorDB ^
     --model D:\Code\bge-m3
 
 # Run main service
@@ -194,6 +195,11 @@ python IntelligenceHubLauncher.py
 # Run collectors
 python CrawlerServiceEngine.py
 ```
+
+> **生产部署入口**：上面是开发机手动启动方式。生产/群晖部署请改用
+> [docs/synology_deployment.md](docs/synology_deployment.md)（Docker Compose，含 .env 配置说明）
+> 或 [systemd/README.md](systemd/README.md)（Linux 裸机三单元）；环境变量模板见根目录
+> [.env.example](.env.example)（复制为 `.env` 填写）。
 
 #### 程序配置
 
@@ -233,11 +239,11 @@ python CrawlerServiceEngine.py
 > 
 > 向量数据库服务，开启该服务后可以使用高级的搜索及关联功能。
 > 
-> 参考启动命令：
+> 参考启动命令（必须用 -m 方式；直接运行 VectorDBBService.py 会因顶层包导入失败）：
 >   ```commandline
->   python VectorDB/VectorDBBService.py \
->     --db-path C:\Code\git\IntelligenceIntegrationSystem\_data\VectorDB \
->     --model C:\Code\git\bge-m3 \
+>   python -m VectorDB.VectorDBBService ^
+>     --db-path C:\Code\git\IntelligenceIntegrationSystem\_data\VectorDB ^
+>     --model C:\Code\git\bge-m3 ^
 >     --agg-store-dir C:\Code\git\IntelligenceIntegrationSystem\_data\Aggressive
 >   ```
 > 
