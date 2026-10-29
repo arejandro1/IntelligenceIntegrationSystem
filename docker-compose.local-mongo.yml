@@ -1,0 +1,73 @@
+# 本地 MongoDB 编排（叠加文件，仅适用于支持 AVX 指令集的 CPU）
+#
+# 用法（与主编排文件叠加）：
+#   docker compose -f docker-compose.yml -f docker-compose.local-mongo.yml up -d
+#
+# 硬件要求（P0-4 核验结论）：
+# - MongoDB 5.0+（含 6.x/7.x/8.x）要求 CPU 支持 AVX 指令集；
+# - Synology DS920+ 的 Intel Celeron J4125（Gemini Lake）不支持 AVX，
+#   官方 mongo 镜像在其上启动即崩溃（illegal instruction）；
+# - 请仅在 AVX 兼容宿主机上使用本文件（验证：grep -c avx /proc/cpuinfo 结果 > 0）。
+# - 不提供"降级 MongoDB 4.4"的默认选项：4.4 已于 2024-02 停止官方维护。
+#
+# 说明：
+# - 通过 override 合并为 hub 增加 depends_on（外部 Mongo 模式不被本地
+#   depends_on 阻塞，主文件已移除该依赖）；
+# - 认证：首次初始化时以 MONGO_INITDB_ROOT_USERNAME/PASSWORD 创建 root；
+#   .env 中的 MONGO_USER/MONGO_PASSWORD 应与其一致（应用经 admin 库认证）；
+# - 端口仅绑定宿主机环回地址，不暴露公网；
+# - WiredTiger 缓存限制 0.5GB（J4125/20GB 内存规划，见 50-synology.md）。
+services:
+  china-watch-mongo:
+    image: mongo:7
+    container_name: china-watch-mongo
+    restart: unless-stopped
+    # mongo 官方镜像内部以 mongodb 用户(UID 999)运行，不能覆盖 user:，
+    # 否则 /data/db 权限冲突导致启动失败。持久化使用命名卷并保持默认用户。
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:?请在 .env 中配置 MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:?请在 .env 中配置 MONGO_INITDB_ROOT_PASSWORD}
+    command: ["--wiredTigerCacheSizeGB", "0.5"]
+    ports:
+      # 仅绑定环回地址：不对宿主机以外暴露；容器间走 compose 内部网络
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      # 备份目录（P1-8）：mongodump 归档落地宿主机，随 _export 一并备份
+      - ./_export/backup:/backup
+    healthcheck:
+      # 启用认证后 ping 必须携带凭据；必须用 CMD-SHELL 形式展开环境变量
+      test: ["CMD-SHELL", "mongosh -u \"$$MONGO_INITDB_ROOT_USERNAME\" -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --quiet --eval \"db.adminCommand('ping')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    mem_limit: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"
+
+  china-watch-hub:
+    environment:
+      # 本地模式覆盖：经 compose 内部网络访问 mongo 服务名
+      MONGO_HOST: china-watch-mongo
+      MONGO_PORT: "27017"
+      MONGO_USER: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    depends_on:
+      china-watch-mongo:
+        condition: service_healthy
+
+  china-watch-notifier:
+    environment:
+      MONGO_HOST: china-watch-mongo
+      MONGO_PORT: "27017"
+      MONGO_USER: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    depends_on:
+      china-watch-mongo:
+        condition: service_healthy
+
+volumes:
+  mongo_data:

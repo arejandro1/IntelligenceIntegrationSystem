@@ -1,21 +1,17 @@
-# M7: China Watch 四容器 Docker Compose
-# 用于群晖 DS920+ 生产部署
+# M7: China Watch 容器编排（P0-4 修订版）
+#
+# 数据库模式说明（重要）：
+# - 本文件默认使用【外部 MongoDB】：应用容器经 MONGO_HOST 等变量连接
+#   运行在兼容硬件上的 MongoDB（见 docs/synology_deployment.md）。
+#   原因：目标机型 Synology DS920+ 的 Intel J4125 不支持 AVX 指令集，
+#   MongoDB 5.0+（含 mongo:6/7/8）要求 CPU 支持 AVX，官方镜像无法在该
+#   机型运行（启动即 illegal instruction）。不以降级到已停止维护的
+#   MongoDB 4.4 作为默认解决方案。
+# - 若宿主机 CPU 支持 AVX（2012 年后的多数 x86_64 桌面/服务器 CPU），
+#   可叠加本地数据库编排文件启用容器化 MongoDB：
+#     docker compose -f docker-compose.yml -f docker-compose.local-mongo.yml up -d
+#   该文件会启动 china-watch-mongo 并恢复 hub 对它的 depends_on/健康检查。
 services:
-  china-watch-mongo:
-    image: mongo:7
-    container_name: china-watch-mongo
-    restart: unless-stopped
-    user: "1000:1000"
-    ports:
-      - "127.0.0.1:27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   china-watch-hub:
     build:
       context: .
@@ -24,15 +20,30 @@ services:
     restart: unless-stopped
     user: "1000:1000"
     ports:
-      - "127.0.0.1:5000:5000"
+      - "127.0.0.1:5800:5000"
     env_file:
       - .env
-    depends_on:
-      china-watch-mongo:
-        condition: service_healthy
+    environment:
+      # P1-8 修复：容器内显式声明提交地址，避免回落到 127.0.0.1:5000（容器自身）
+      CHINA_WATCH_SUBMIT_URL: "http://china-watch-hub:5000"
+      # 外部 MongoDB 模式：连接信息来自 .env（MONGO_HOST/PORT/USER/PASSWORD）。
+      # 本地 Mongo 模式（compose.local-mongo.yml 叠加）会在该文件中覆盖为服务名。
+      MONGO_HOST: ${MONGO_HOST:?请在 .env 中配置外部 MongoDB 地址 MONGO_HOST}
+      MONGO_PORT: "${MONGO_PORT:-27017}"
+      MONGO_USER: ${MONGO_USER:?请在 .env 中配置 MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:?请在 .env 中配置 MONGO_PASSWORD}
     volumes:
+      - ./_config:/app/_config:ro
+      # _data 可写挂载：认证库（Authentication.db，P0-2）、队列台账等持久化状态
       - ./_data:/app/_data
       - ./_log:/app/_log
+    # 内存上限（可按机型调整；含向量模型常驻则适当上调）
+    mem_limit: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"
 
   china-watch-crawler:
     build:
@@ -43,9 +54,26 @@ services:
     user: "1000:1000"
     env_file:
       - .env
+    environment:
+      # P1-8 修复：提交地址指向 hub 容器（原实现回落 http://127.0.0.1:5000 即容器自身，
+      # 导致按官方 compose 部署时采集链路整体断开，且 CrawlCache 无限增长）
+      CHINA_WATCH_SUBMIT_URL: "http://china-watch-hub:5000"
     depends_on:
       china-watch-hub:
         condition: service_started
+    volumes:
+      # P1-8 修复：挂载配置与数据目录（.dockerignore 排除了 config.json，
+      # 不挂载则容器内配置为空，爬虫无法获得 token / 代理 / 提交地址）
+      - ./_config:/app/_config:ro
+      - ./_data:/app/_data
+      - ./_log:/app/_log
+    # 内存上限（可按机型调整；Playwright 浏览器实例较吃内存）
+    mem_limit: 3g
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"
 
   china-watch-notifier:
     build:
@@ -56,9 +84,23 @@ services:
     user: "1000:1000"
     env_file:
       - .env
+    environment:
+      # 推送服务与 Hub 共享同一 MongoDB（push_tasks 队列）
+      MONGO_HOST: ${MONGO_HOST:?请在 .env 中配置外部 MongoDB 地址 MONGO_HOST}
+      MONGO_PORT: "${MONGO_PORT:-27017}"
+      MONGO_USER: ${MONGO_USER:?请在 .env 中配置 MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:?请在 .env 中配置 MONGO_PASSWORD}
     depends_on:
       china-watch-hub:
         condition: service_started
-
-volumes:
-  mongo_data:
+    volumes:
+      - ./_config:/app/_config:ro
+      - ./_data:/app/_data
+      - ./_log:/app/_log
+    # 内存上限（可按机型调整；轻量推送服务）
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "5"

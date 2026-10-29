@@ -1,0 +1,5 @@
+# China Watch Notifier 容器最小依赖（P1-8）
+# 仅推送服务所需：MongoDB 队列 + HTTP webhook 发送。
+# 不安装 Flask/Playwright/crawl4ai 等重依赖，构建更快、镜像更小。
+pymongo==4.13.0
+httpx

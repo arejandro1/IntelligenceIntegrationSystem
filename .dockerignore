@@ -1,0 +1,77 @@
+# 密钥与真实配置（禁止进入镜像）
+.env
+.env.*
+!.env.example
+.local.env
+_config/config.json
+_config/config.local.json
+_config/ai_client_config.py
+_config/Authentication.db
+AIClientCenter/ai_client_config.py
+sf_keys_*.txt
+secrets/
+*.key
+*.pem
+
+# 批次五：本地凭据与临时敏感产物（禁止进入构建上下文与镜像）
+# _demo_admin_cred.txt 是本地演示管理员凭据；docker build 时 COPY . . 会把
+# 未忽略的文件送入构建上下文，必须在此排除
+_demo_admin_cred.txt
+*_cred*.txt
+cred_*.txt
+key_record.json
+# 部署/构建过程输出与错误转储
+_*_out.txt
+_bootstrap_out.txt
+_docker_load_*.txt
+_up*_out.txt
+_m1_test_out.txt
+# 部署镜像 tar
+*.tar
+*.tar.gz
+
+# 版本控制与构建产物
+.git
+.gitmodules
+.gitignore
+__pycache__/
+*.pyc
+build/
+dist/
+*.egg-info/
+
+# 数据与日志
+_log/
+_data/
+_export/
+_products/
+logs/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# 测试与临时脚本（镜像不需要）
+Test/
+playground/
+ModelTraining/
+_test_result.txt
+_run_tests.py
+_run_e2e_demo.py
+_smoke_test_deepseek.py
+_m1_test_out.txt
+_smoke_out.txt
+china-watch-deploy.tar.gz
+*.tar
+*.tar.gz
+_pricing.txt
+_deepseek_pricing.html
+_update_pricing.py
+fix_*.py
+
+# 模型与缓存
+models/
+.pytest_cache/
+.vscode/
+.venv/
+venv/

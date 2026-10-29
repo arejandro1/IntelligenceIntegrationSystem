@@ -17,7 +17,23 @@ StandardOutput=journal
 StandardError=journal
 
 KillSignal=SIGTERM
-TimeoutStopSec=30
+# 17 个抓取任务需轮询 stop_event 逐个退出，30s 偏紧容易强杀，放宽到 60s
+TimeoutStopSec=60
+
+# 安全加固(D2)
+NoNewPrivileges=true
+ProtectSystem=full
+# ProtectHome=read-only 使 /home 整体只读，程序无法写 _data/、_log/（D3 修复）。
+# 不能改 ProtectHome=true：Python 解释器(/home/sleepy/anaconda3)与项目代码都在 /home 下，
+# true 会把二者一并隐藏，进程根本无法启动。
+# 因此保持 read-only（代码可读、home 其余目录不可写），
+# 再用 ReadWritePaths 单独放行数据与日志目录的写权限。
+ProtectHome=read-only
+ReadWritePaths=/home/sleepy/Documents/IntelligenceIntegrationSystem/_data /home/sleepy/Documents/IntelligenceIntegrationSystem/_log
+PrivateTmp=true
+
+# 内存上限：超过后由 systemd OOM 杀死并自动重启；数值按机型内存调整
+MemoryMax=3G
 
 [Install]
 WantedBy=multi-user.target

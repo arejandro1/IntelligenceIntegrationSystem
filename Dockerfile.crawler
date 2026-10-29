@@ -13,9 +13,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制依赖清单
+# 复制依赖清单（含子模块 requirements，pip install -r 会递归引用，须先 COPY）
 COPY requirements-server.txt ./
-RUN pip install --no-cache-dir -r requirements-server.txt
+COPY AIClientCenter/requirements.txt ./AIClientCenter/requirements.txt
+COPY MyPythonUtility/requirements.txt ./MyPythonUtility/requirements.txt
+COPY PyLoggingBackend/requirements.txt ./PyLoggingBackend/requirements.txt
+# 国内构建环境使用清华 PyPI 镜像源加速并加网络超时/重试；运行时不受影响
+RUN pip install --no-cache-dir -r requirements-server.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --timeout 60 --retries 5
 
 # 安装 Playwright Chromium
 RUN playwright install chromium --with-deps || true

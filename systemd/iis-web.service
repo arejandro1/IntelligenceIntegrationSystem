@@ -1,5 +1,8 @@
+# ⚠️ 注意：本 systemd 单元仅用于本地 Linux 开发/测试。
+# 生产部署目标为群晖 DS920+ Docker（M7 四容器结构，见 docker-compose.yml），
+# 群晖 DSM 不直接支持 systemd，请勿在生产使用本单元。
 [Unit]
-Description=Intelligence Integration System - Web Hub Service
+Description=Intelligence Integration System - Web Hub Service (local dev only)
 After=network.target iis-vectordb.service
 Wants=iis-vectordb.service
 
@@ -16,12 +19,29 @@ RestartSec=10
 StandardOutput=journal
 StandardError=journal
 
-# 启用 systemd watchdog：若主进程 60s 内未发送 WATCHDOG=1，则自动重启
-# NotifyAccess=main
-# WatchdogSec=60
+# KillSignal/TimeoutStopSec 与 iis-vectordb/iis-crawler 保持一致
+KillSignal=SIGTERM
+TimeoutStopSec=30
 
-# KillSignal=SIGTERM
-# TimeoutStopSec=30
+# systemd watchdog(D2):与 systemd/README.md 声明及代码喂狗间隔(10s)对齐。
+# 代码在 IntelligenceHubStartup 中以 interval_sec=10 发送 WATCHDOG=1,
+# 满足 systemd 要求的 WATCHDOG_USEC/2(15 秒)内喂狗一次。
+WatchdogSec=30
+
+# 安全加固(D2)
+NoNewPrivileges=true
+ProtectSystem=full
+# ProtectHome=read-only 使 /home 整体只读，程序无法写 _data/、_log/（D3 修复）。
+# 不能改 ProtectHome=true：Python 解释器(/home/sleepy/anaconda3)与项目代码都在 /home 下，
+# true 会把二者一并隐藏，进程根本无法启动。
+# 因此保持 read-only（代码可读、home 其余目录不可写），
+# 再用 ReadWritePaths 单独放行数据与日志目录的写权限。
+ProtectHome=read-only
+ReadWritePaths=/home/sleepy/Documents/IntelligenceIntegrationSystem/_data /home/sleepy/Documents/IntelligenceIntegrationSystem/_log
+PrivateTmp=true
+
+# 内存上限：超过后由 systemd OOM 杀死并自动重启；数值按机型内存调整
+MemoryMax=2G
 
 [Install]
 WantedBy=multi-user.target

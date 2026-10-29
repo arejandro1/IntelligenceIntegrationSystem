@@ -261,6 +261,7 @@ def update_nginx_upstream(new_ip: str) -> tuple[bool, str]:
             try:
                 os.remove(UPSTREAM_FILE)
             except FileNotFoundError:
+                # 回滚时文件本就不存在：与"已清理"等价，无需处理
                 pass
 
         raise RuntimeError(f"failed to update nginx upstream: {e}") from e

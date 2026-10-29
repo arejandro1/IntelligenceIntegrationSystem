@@ -48,16 +48,19 @@ class CustomWebEnginePage(QWebEnginePage):
             try:
                 settings.setAttribute(QWebEngineSettings.WebSecurityEnabled, True)
             except AttributeError:
+                # Qt 版本兼容探测：旧版无该属性时跳过（有意忽略）
                 pass
 
             try:
                 settings.setAttribute(QWebEngineSettings.AllowWindowActivationFromJavaScript, True)
             except AttributeError:
+                # Qt 版本兼容探测：旧版无该属性时跳过（有意忽略）
                 pass
 
             try:
                 settings.setAttribute(QWebEngineSettings.ShowScrollBars, True)
             except AttributeError:
+                # Qt 版本兼容探测：旧版无该属性时跳过（有意忽略）
                 pass
 
         except Exception as e:
@@ -67,6 +70,7 @@ class CustomWebEnginePage(QWebEnginePage):
         try:
             settings.setUnknownUrlSchemePolicy(QWebEngineSettings.AllowAllUnknownUrlSchemes)
         except AttributeError:
+            # Qt 版本兼容探测：旧版无该属性时跳过（有意忽略）
             pass
 
     def acceptNavigationRequest(self, url, _type, isMainFrame):

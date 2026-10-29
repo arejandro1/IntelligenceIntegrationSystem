@@ -4,7 +4,9 @@ from mongodb_exporter import export_mongodb_data
 
 def get_current_month_range() -> (str, str):
     """获取当前月的起始和结束时间（ISO格式）[1,7](@ref)"""
-    today = datetime.datetime.utcnow()
+    # datetime.utcnow() 已弃用（Python 3.12+）；改用带时区的 now(UTC)。
+    # 仅取 year/month 参与计算，输出仍为 naive ISO 串 + "Z" 后缀（UTC 语义不变）。
+    today = datetime.datetime.now(datetime.timezone.utc)
     first_day = datetime.datetime(today.year, today.month, 1)
     last_day = first_day + datetime.timedelta(days=32)
     last_day = datetime.datetime(last_day.year, last_day.month, 1) - datetime.timedelta(seconds=1)

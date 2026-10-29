@@ -79,7 +79,8 @@ def safe_parse_json(text):
     # 情况 A: 已经是干净的 JSON
     try:
         return json.loads(text)
-    except:
+    except Exception:
+        # 多格式提取链第 1 步失败属预期，落入第 2 步继续尝试
         pass
 
     # 情况 B: 被 ```json ... ``` 包裹
@@ -87,7 +88,8 @@ def safe_parse_json(text):
     if match:
         try:
             return json.loads(match.group(1))
-        except:
+        except Exception:
+            # 多格式提取链第 2 步失败属预期，落入第 3 步继续尝试
             pass
 
     # 情况 C: 只有一部分是 JSON，尝试提取第一个 { 到最后一个 }
@@ -95,7 +97,8 @@ def safe_parse_json(text):
     if match:
         try:
             return json.loads(match.group(1))
-        except:
+        except Exception:
+            # 多格式提取链第 3 步失败：按解析失败返回 None（调用方有空值分支）
             pass
 
     # 解析失败

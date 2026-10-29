@@ -10,7 +10,8 @@ WorkingDirectory=/home/sleepy/Documents/IntelligenceIntegrationSystem
 EnvironmentFile=/home/sleepy/Documents/IntelligenceIntegrationSystem/systemd/iis.env
 ExecStart=/home/sleepy/anaconda3/envs/iis/bin/python -m VectorDB.VectorDBBService \
     --db-path /home/sleepy/Documents/IntelligenceIntegrationSystem/_data/VectorDB \
-    --model /home/sleepy/Documents/bge-m3
+    --model /home/sleepy/Documents/bge-m3 \
+    --agg-store-dir /home/sleepy/Documents/IntelligenceIntegrationSystem/_data/Aggressive
 Restart=always
 RestartSec=10
 
@@ -19,6 +20,22 @@ StandardError=journal
 
 KillSignal=SIGTERM
 TimeoutStopSec=30
+
+# 安全加固(D2)
+NoNewPrivileges=true
+ProtectSystem=full
+# ProtectHome=read-only 使 /home 整体只读，程序无法写 _data/、_log/（D3 修复）。
+# 不能改 ProtectHome=true：Python 解释器(/home/sleepy/anaconda3)与项目代码都在 /home 下，
+# true 会把二者一并隐藏，进程根本无法启动。
+# 因此保持 read-only（代码可读、home 其余目录不可写），
+# 再用 ReadWritePaths 单独放行数据与日志目录的写权限。
+ProtectHome=read-only
+ReadWritePaths=/home/sleepy/Documents/IntelligenceIntegrationSystem/_data /home/sleepy/Documents/IntelligenceIntegrationSystem/_log
+PrivateTmp=true
+
+# 内存上限：超过后由 systemd OOM 杀死并自动重启；数值按机型内存调整
+#（向量模型 bge-m3 常驻 + ChromaDB 索引，四核小机型建议 4G 起步）
+MemoryMax=4G
 
 [Install]
 WantedBy=multi-user.target

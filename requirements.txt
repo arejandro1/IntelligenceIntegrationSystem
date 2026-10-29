@@ -7,42 +7,46 @@ Flask==3.1.1                 # Web framework (lightweight WSGI apps)
 Werkzeug==3.1.3              # WSGI utility library (dependency for Flask)
 Jinja2==3.1.6                # Template engine (dependency for Flask)
 pymongo==4.13.0              # Official MongoDB driver
-tortoise-orm==0.25.0         # Async ORM (supports PostgreSQL/MySQL, etc.)
 pydantic==2.11.5             # Data validation library (core dependency of FastAPI)
-markdown
-bcrypt
-psutil
+markdown==3.9
+bcrypt==4.3.0
+psutil==7.0.0
 # gunicorn                   # Only on Linux
-waitress                     # WSGI service
-apscheduler
-tzlocal
-openai
-httpx
-json_repair
-backoff
+waitress==3.0.2              # WSGI service
+apscheduler==3.11.0
+tzlocal==5.3.1
+openai==1.97.0
+httpx==0.28.1
+json_repair==0.52.0
+backoff==2.2.1
 
-playwright-stealth          # playwright more like brower
-ultimate-sitemap-parser     # Sitemap
+tf-playwright-stealth==1.2.0 # playwright more like brower（freeze 环境实际安装包；
+                             # 提供 playwright_stealth 导入模块，playwright-stealth 的维护分支）
+ultimate-sitemap-parser==1.8.1  # Sitemap（依赖清理：钉住镜像构建实测通过的 1.8.1，见 _build_hub*_out.txt）
 
 ##############################
 ### Vector DB
 ##############################
-hf_xet
+hf_xet==1.2.0
 chromadb==1.2.1
-onnxruntime
+onnxruntime==1.23.1
 # onnxruntime-gpu
-sentence_transformers
-langchain_text_splitters
+sentence_transformers==5.1.2
+# 注意：torch 由 sentence-transformers 间接引入（requirements_freeze.txt: torch==2.9.0）。
+# Linux CPU 环境请改用以下命令单独安装，避免默认拉取数 GB 的 CUDA 依赖：
+#   pip install torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu
+langchain_text_splitters==1.0.0
 
 ##############################
 ### Network Requests & Parsing
 ##############################
 requests==2.32.3             # HTTP requests library (includes SOCKS proxy support)
-requests[socks]
+requests[socks]              # SOCKS 代理支持（freeze: PySocks==1.7.1）
 urllib3==1.26.20             # HTTP client (Note: requires 1.26.9 ≤ ver < 1.27)
+                             # TODO: requirements_freeze.txt 实际为 urllib3==2.3.0，
+                             # 与本钉版本不一致；升级需先评估 requests 等依赖的兼容性，勿盲目升级。
 aiohttp==3.12.2              # Async HTTP client (dependency for FastAPI/Playwright)
 beautifulsoup4==4.13.4       # HTML parsing library
-bs4==0.0.2                   # Alias package for BeautifulSoup4
 lxml==5.4.0                  # XML/HTML parser (high-performance XPath support)
 feedparser==6.0.10           # RSS/Atom parser (version strictly pinned)
 html2text==2025.4.15         # HTML to Markdown converter
@@ -86,14 +90,12 @@ PyRSS2Gen==1.1               # RSS generator
 # faiss-gpu                   # GPU-accelerated version for Linux/Mac (requires NVIDIA env)
 # faiss-cpu                   # Or use GPU version
 # transformers==4.36.0        # Hugging Face NLP model library
-# sentence-transformers       # Text embedding models (requires `transformers`)
 # hnswlib                     # Approximate nearest neighbor search library
 # PyQtWebEngine
 
-streamlit
+streamlit                    # requirements_freeze.txt 未收录，暂无参照版本，保持不钉
 
 -r AIClientCenter/requirements.txt
 -r MyPythonUtility/requirements.txt
 -r IntelligenceCrawler/requirements.txt
 -r PyLoggingBackend/requirements.txt
-

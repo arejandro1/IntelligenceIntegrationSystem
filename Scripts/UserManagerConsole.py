@@ -164,7 +164,8 @@ class UserManagerConsole:
         """添加新用户"""
         self._show_header("添加新用户")
         username = input("用户名: ")
-        password = input("密码: ")
+        # 密码策略与 UserManager.create_user 保持一致：最少 8 字符，须含字母和数字
+        password = input("密码(至少8位，须包含字母和数字): ")
         confirm = input("确认密码: ")
 
         if password != confirm:

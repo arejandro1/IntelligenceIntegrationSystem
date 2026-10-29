@@ -1,18 +1,20 @@
-# China Watch Notifier 容器（M7）
+# China Watch Notifier 容器（M7 / P1-7 修订：常驻推送服务）
 FROM python:3.10-slim
 
 WORKDIR /app
 
 # 系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ curl \
+    gcc curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制依赖清单
-COPY requirements-server.txt ./
-RUN pip install --no-cache-dir -r requirements-server.txt
+# P1-8：仅安装推送服务最小依赖（pymongo + httpx），
+# 不再复用全量 requirements-server.txt（Flask/Playwright 等重依赖）
+COPY requirements-notifier.txt ./requirements-notifier.txt
+RUN pip install --no-cache-dir -r requirements-notifier.txt \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple --timeout 60 --retries 5
 
-# 复制项目
+# 复制项目（.dockerignore 已排除无关数据目录）
 COPY . .
 
 # 非 root 用户
@@ -20,5 +22,7 @@ RUN useradd --create-home --uid 1000 chinawatch \
     && chown -R chinawatch:chinawatch /app
 USER chinawatch
 
-# 推送服务启动（M6 阶段 LogNotifier 作为默认实现）
-CMD ["python", "-c", "from ServiceComponent.PushNotifier import PushNotifier; p=PushNotifier(); print('China Watch Notifier started.')"]
+# P1-7：常驻消费入口（原实现创建对象后即退出，属占位实现已移除）。
+# 消费 push_tasks 持久化队列并向配置的 webhook 发送；未配置渠道时
+# 以禁用状态常驻并在日志明确显示（不伪报成功）。SIGTERM 优雅退出。
+CMD ["python", "-m", "ServiceComponent.PushNotifier"]

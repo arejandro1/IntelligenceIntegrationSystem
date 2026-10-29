@@ -216,3 +216,34 @@ secrets/
 # 日志目录（补充，防止漏配）
 logs/
 _log/
+
+# 仓库卫生（M0 追加）：避免大文件/调试文件误提交
+china-watch-hub-v2.tar
+_test_result.txt
+_情报研判结果.txt
+_smoke_out.txt
+_stress_out.txt
+*.tar
+
+# 密钥记录文件（M0 追加）
+sf_keys_*.txt
+key_record.json
+
+# 批次五：本地凭据与临时敏感产物（禁止进入版本提交）
+# _demo_admin_cred.txt 是本地演示管理员凭据，绝不能提交
+_demo_admin_cred.txt
+# 部署脚本/构建过程中的输出与错误转储（可能含环境信息）
+_*_out.txt
+_bootstrap_out.txt
+_docker_load_*.txt
+_up*_out.txt
+_build_*_out.txt
+_docker_load_err.txt
+# 根目录遗留的临时文件（无扩展名调试产物）
+/_$
+# 部署镜像 tar 与凭据类中间文件
+*_cred*.txt
+cred_*.txt
+
+# systemd 共享环境变量（含 VECTOR_ADMIN_TOKEN，仅以 iis.env.example 入库）
+/systemd/iis.env

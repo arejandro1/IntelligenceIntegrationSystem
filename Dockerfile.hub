@@ -1,16 +1,22 @@
 # China Watch Hub 容器（M7）
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# 系统依赖
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ curl \
-    && rm -rf /var/lib/apt/lists/*
+# 系统依赖（含重试以应对镜像源 502）
+RUN for i in 1 2 3; do \
+    apt-get update && \
+    apt-get install -y --no-install-recommends --fix-missing gcc g++ curl && break || \
+    sleep 5; \
+    done && rm -rf /var/lib/apt/lists/*
 
-# 复制依赖清单
+# 复制依赖清单（含子模块 requirements，pip install -r 会递归引用）
 COPY requirements-server.txt ./
-RUN pip install --no-cache-dir -r requirements-server.txt
+COPY AIClientCenter/requirements.txt ./AIClientCenter/requirements.txt
+COPY MyPythonUtility/requirements.txt ./MyPythonUtility/requirements.txt
+COPY PyLoggingBackend/requirements.txt ./PyLoggingBackend/requirements.txt
+# 国内构建环境使用清华 PyPI 镜像源加速并加网络超时/重试；运行时不受影响
+RUN pip install --no-cache-dir -r requirements-server.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --timeout 60 --retries 5
 
 # 复制项目（排除.pyc等）
 COPY . .
@@ -20,9 +26,15 @@ RUN useradd --create-home --uid 1000 chinawatch \
     && chown -R chinawatch:chinawatch /app
 USER chinawatch
 
-# 健康检查
+# 健康检查（P0-1 对齐说明）：
+# - 此处使用浅探活 /maintenance/ping：Docker 只关心“进程存活”
+#   （Flask 能应答即 200），不判定业务线程状态，避免只采集/DRY_RUN/
+#   Drainer 模式下因无旧 AI 工作线程被误判为不健康而重启循环；
+# - 业务就绪探活（消费者线程/Mongo/队列积压）由 Launcher 通过
+#   /maintenance/ping?deep=1 执行（见 IntelligenceHubLauncher.py），
+#   连续失败达阈值才退出进程交外部 supervisor 重启。
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:5000/ || exit 1
+    CMD curl -f http://localhost:5000/maintenance/ping || exit 1
 
 EXPOSE 5000
 

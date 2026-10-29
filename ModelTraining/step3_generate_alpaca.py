@@ -79,7 +79,8 @@ def apply_score_reduction(archived_doc):
     if "APPENDIX_MAX_RATE_SCORE" in appendix:
         try:
             max_score = float(appendix["APPENDIX_MAX_RATE_SCORE"])
-        except:
+        except Exception:
+            # 评分字段脏数据：保持默认 0 分阈值（有意容错，不中断批量训练）
             pass
     elif rates:
         try:
@@ -92,7 +93,8 @@ def apply_score_reduction(archived_doc):
                     nums.append(float(v))
             if nums:
                 max_score = max(nums)
-        except:
+        except Exception:
+            # RATE 值全为非数值脏数据：保持默认 0 分阈值（有意容错）
             pass
 
     # 执行减分
