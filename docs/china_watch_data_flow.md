@@ -115,6 +115,6 @@ flowchart TD
 ## 5. 待核验项
 
 - M4 首批 8 个来源的具体清单：待核验。
-- M5 PDF 处理的具体流程：待核验。
+- M5 PDF 处理的具体流程：已核验（2026-10-29）。安全校验组件 `ServiceComponent/PdfSecurityValidator.py` 已实现并有离线测试（test_m8_pdf）；但主仓库当前不存在 PDF 下载/内容提取流程（采集链路仅处理 RSS/HTML 文本，`CollectedData.content` 为 str 无二进制通道，china_watch 来源均为 RSS，`pdf_worker` 配置暂无生产代码消费），validator 暂未接入生产链路。待 PDF 采集流程落地时，在"下载落盘后、内容提取前"调用校验，失败记中文 warning（含 URL 与原因）并跳过该条，不中断整轮抓取；调用示例见该组件 docstring。
 - M6 推送渠道：待核验。
 - M7 四容器部署的端口与网络细节：待核验。

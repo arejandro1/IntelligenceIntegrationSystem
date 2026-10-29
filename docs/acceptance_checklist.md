@@ -76,6 +76,11 @@
 
 ## M5：PDF 处理
 
+> 补记（2026-10-29 核验）：以下各项均为**组件级**离线验证。经排查主仓库当前不存在
+> PDF 采集/下载/内容提取流程（来源均为 RSS 文本，`CollectedData.content` 为 str，
+> `pdf_worker` 配置暂无生产代码消费），`PdfSecurityValidator` 未接入生产链路；
+> 待 PDF 采集流程落地时在"下载落盘后、内容提取前"接入，调用示例见组件 docstring。
+
 - [x] PDF 文件头校验（`%PDF`）已实施（✅ test_m8_pdf）。
 - [x] PDF 大小上限已配置化并生效（✅）。
 - [x] 伪装文件拒绝测试通过（✅）。

@@ -2,6 +2,27 @@
 """
 PdfSecurityValidator PDF安全校验（M5）
 文件头校验（%PDF）、大小上限、伪装文件拒绝
+
+接入状态（2026-10-29 核验）：
+    本组件已实现并有离线测试（Test/test_m8_pdf.py），但主仓库当前不存在
+    PDF 采集/下载/内容提取流程（采集链路仅处理 RSS/HTML 文本，
+    CollectedData.content 为 str，无二进制载荷通道；china_watch 来源均为
+    RSS），故暂未接入生产代码。待 PDF 采集流程落地时，应在
+    “下载落盘之后、内容提取之前”的边界调用本组件；校验失败时记录中文
+    warning 日志（含 URL 与原因）、跳过该条数据，不得中断整轮抓取。
+
+调用示例（供未来 PDF 采集流程接线参考）::
+
+    from ServiceComponent.PdfSecurityValidator import PdfSecurityValidator
+
+    # 大小上限应读取配置，不得硬编码（预留键：pdf_worker 并发已在配置中）
+    validator: PdfSecurityValidator = PdfSecurityValidator(max_size_bytes=10 * 1024 * 1024)
+    ok: bool
+    reason: str
+    ok, reason = validator.validate(local_pdf_path)
+    if not ok:
+        logger.warning(f"PDF 安全校验未通过，已拒绝处理: {url} - {reason}")
+        return  # 跳过本条数据，继续本轮后续抓取
 """
 import os
 from typing import Optional
