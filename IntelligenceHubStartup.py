@@ -606,14 +606,6 @@ def start_intelligence_hub_service(config) -> Tuple[IntelligenceHub, Intelligenc
             password=mongodb_pass,
             collection_name='intelligence_low_value'),
 
-        db_recommendation=MongoDBStorage(
-            host=mongodb_host,
-            port=mongodb_port,
-            db_name='IntelligenceIntegrationSystem',
-            username=mongodb_user,
-            password=mongodb_pass,
-            collection_name='intelligence_recommendation'),
-
             ai_client_manager = client_manager
     )
 

@@ -209,7 +209,6 @@ class IntelligenceHub:
                  db_cache: Optional[MongoDBStorage] = None,
                  db_archive: Optional[MongoDBStorage] = None,
                  db_low_value: Optional[MongoDBStorage] = None,
-                 db_recommendation: Optional[MongoDBStorage] = None,
                  ai_client_manager: AIClientManager = None,
                  api_enabled: bool = False,
                  api_dry_run: bool = True,
@@ -230,7 +229,6 @@ class IntelligenceHub:
         :param db_cache: The mongodb for caching collected data.
         :param db_archive: The mongodb for archiving processed data.
         :param db_low_value: The mongodb for saving low-value data.
-        :param db_recommendation: The mongodb for storing recommendation data.
         :param ai_client_manager: The openai-like client for data processing.
         :param kwargs: Extra but not key parameters.
         """
@@ -243,7 +241,6 @@ class IntelligenceHub:
         self.mongo_db_cache = db_cache
         self.mongo_db_archive = db_archive
         self.mongo_db_low_value = db_low_value
-        self.mongo_db_recommendation = db_recommendation
         self.ai_client_manager = ai_client_manager
 
         # 护栏参数（M1/M3）：
@@ -354,7 +351,6 @@ class IntelligenceHub:
         # ------------------ Tasks ------------------
 
         self._init_scheduler()
-        # self._trigger_generate_recommendation()
 
         # ------------ Translation Patch ------------
 
@@ -398,11 +394,6 @@ class IntelligenceHub:
     # ----------------------------------------------------- Setups -----------------------------------------------------
 
     def _init_scheduler(self):
-        # self.scheduler.add_hourly_task(
-        #     func=self._do_generate_recommendation,
-        #     task_id=f'generate_recommendation_task',
-        #     use_new_thread=True
-        # )
         self.scheduler.add_weekly_task(
             func=self._do_export_mongodb_weekly,
             task_id = 'export_mongodb_weekly_task',
@@ -1074,13 +1065,6 @@ class IntelligenceHub:
         query_engine = self.archive_db_query_engine
         result = query_engine.count_documents(_filter)
         return result
-
-    def get_recommendations(self) -> List[Dict]:
-        # 未实现：recommendations_manager 属性从未赋值（推荐生成任务已在
-        # _init_scheduler 中注释停用）。返回空结果而非抛 AttributeError；
-        # WebService 的 RPC 白名单注释已同步说明该方法被移除的原因。
-        logger.warning("get_recommendations is not implemented; returning empty result.")
-        return []
 
     # ------------------------------------------------ Directly Access ------------------------------------------------
 

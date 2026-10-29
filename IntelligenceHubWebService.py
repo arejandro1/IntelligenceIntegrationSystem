@@ -457,10 +457,9 @@ class IntelligenceHubWebService:
                 "get_intelligence_summary",
                 "count_documents",
                 # P2 修复：移除 4 个必然失败的白名单项：
-                # - get_recommendations: recommendations_manager 属性从未赋值，调用即 AttributeError
+                # - get_recommendations: 推荐功能已整体下线（2026-10 起方法本体移除）
                 # - statistics: 是 @property，getattr 拿到 dict 不可调用，RPC 必然 TypeError
                 # - get_query_engine / get_statistics_engine: 返回引擎对象无法 JSON 序列化
-                # 以上方法如有调用方，修复实现后再加回白名单。
                 "submit_intelligence_manual_rating",
             ]
         )
@@ -1037,13 +1036,6 @@ class IntelligenceHubWebService:
         @app.route('/intelligences', methods=['GET'])
         def intelligences_view():
             return render_template('intelligence_list.html')
-
-        @app.route('/recommendations', methods=['GET'])
-        def intelligences_recommendations_page():
-            # recommendations = self.intelligence_hub.get_recommendations()
-            # return default_article_list_render(
-            #     recommendations, offset=0, count=len(recommendations), total_count=len(recommendations))
-            return ''
 
         @app.route('/intelligences/clusters', methods=['GET'])
         def intelligences_clusters_view():
