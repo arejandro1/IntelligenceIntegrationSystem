@@ -1,6 +1,9 @@
 {
   "intelligence_hub": {
     "ai_analysis_thread": 1,
+    "similar_recall_enabled": true,
+    "max_unarchived_load": 10000,
+    "archive_retry_max": 5,
     "china_watch": {
       "api_enabled": false,
       "api_dry_run": true,
@@ -47,15 +50,38 @@
       "daily_api_budget_cny": 0,
       "monthly_api_budget_cny": 0,
       "daily_api_call_limit": 0,
-      "monthly_api_call_limit": 0
+      "monthly_api_call_limit": 0,
+      "daily_api_warn_cny": 0,
+      "monthly_api_warn_cny": 0
     },
     "pricing": {
-      "flash_model": "",
-      "pro_model": "",
+      "flash_model": "deepseek-v4-flash",
+      "pro_model": "deepseek-v4-pro",
       "flash_input_cny_per_1k": 0.001,
       "flash_output_cny_per_1k": 0.002,
-      "pro_input_cny_per_1k": 0.01,
-      "pro_output_cny_per_1k": 0.02
+      "pro_input_cny_per_1k": 0.003,
+      "pro_output_cny_per_1k": 0.006
+    },
+    "push_notifier": {
+      "_comment": "P1-7 推送服务：归档总分达到 min_total_score 的情报写入 push_tasks 持久化队列，由 china-watch-notifier 容器消费并发送到 webhook。enabled=false 或 webhook_url 为空时明确显示禁用，不伪报成功。",
+      "enabled": false,
+      "webhook_url": "",
+      "secret_token": "",
+      "min_total_score": 7.0,
+      "timeout_seconds": 10,
+      "max_retries": 3,
+      "retry_backoff_seconds": 2,
+      "allow_private_webhook": false,
+      "poll_interval_seconds": 10
+    },
+    "disk_guard": {
+      "_comment": "P1-8/批次四 磁盘三级降级：>=warn_percent 告警；>=stop_push_percent 停止推送入队；>=stop_collect_percent 停止采集与队列消费并暂停新增付费请求（核心查询与告警保留，在途请求自然完成，已付费结果的交付与重放继续）。watch_path 相对路径以项目根为基准（示例值 _data 即项目根下的 _data 目录，不会拼出 _data/_data）。",
+      "enabled": true,
+      "watch_path": "_data",
+      "interval_seconds": 300,
+      "warn_percent": 70,
+      "stop_push_percent": 85,
+      "stop_collect_percent": 95
     },
     "mongodb": {
       "host": "localhost",
@@ -88,24 +114,29 @@
     }
   },
   "intelligence_hub_web_service": {
+    "session_cookie_secure": true,
+    "_comment_session_cookie_secure": "仅在 HTTPS 部署时开启；纯 HTTP 部署必须改为 false，否则浏览器不回传登录 Cookie 导致无法登录。",
+    "trusted_proxies": [],
+    "_comment_trusted_proxies": "反向代理（nginx 等）部署时填写代理服务器 IP 列表，用于采信 X-Forwarded-For / X-Real-IP；直连部署保持空列表。",
     "service": {
       "listen_ip": "0.0.0.0",
       "listen_port": 5000,
-      "host_url": "http://127.0.0.1:5000"
+      "host_url": "http://127.0.0.1:5000",
+      "secret_key": "CHANGE_THIS_TO_A_RANDOM_SECRET_KEY_MIN_32_CHARS"
     },
     "rpc_api": {
       "tokens": [
-        "2b9d053e-e62b-4243-9e0f-a363560a6017"
+        "<generate-uuid4-here>"
       ]
     },
     "collector": {
       "tokens": [
-        "a9f2068b-aaa9-48fd-b6d5-d219c8da6090"
+        "<generate-uuid4-here>"
       ]
     },
     "processor": {
       "tokens": [
-        "dd698933-2824-4181-8d50-af4a5f385864"
+        "<generate-uuid4-here>"
       ]
     },
     "public_search": {
@@ -139,9 +170,9 @@
       "http": "http://127.0.0.1:10809",
       "https": "http://127.0.0.1:10809"
     },
-    "default_token": "a9f2068b-aaa9-48fd-b6d5-d219c8da6090"
+    "default_token": "<generate-uuid4-here>"
   },
   "processor": {
-    "default_token": "dd698933-2824-4181-8d50-af4a5f385864"
+    "default_token": "<generate-uuid4-here>"
   }
 }

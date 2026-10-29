@@ -135,7 +135,7 @@ def build_ai_clients() -> Dict[str, BaseAIClient]:
     # --------------------------------------------------------
 
     gemini_api_1 = GoogleGeminiAdapter(
-        api_key='AIzaSyDQFb29QyRMTBpPAhoaLED23vu-mG0gb-k',
+        api_key=os.getenv('GEMINI_API_KEY', '<set-locally>'),
         model='gemini-2.5-flash',
         proxy='http://127.0.0.1:10809'
     )
