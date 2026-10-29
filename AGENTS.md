@@ -102,6 +102,8 @@
 - **`Test/`** — 演示/测试脚本
   - 以 `Test` 开头，但多为手动运行的演示代码，非自动化单元测试
 
+- **`recycled/`** — 历史废弃代码存档，仅供追溯，禁止在新代码中引用；按规则不得删除或移动。
+
 - **`Scripts/`** — 运维脚本
   - `UserManagerConsole.py`：用户增删改查
   - `rebuild_vector_index.py`：重建向量索引
@@ -111,8 +113,8 @@
 
 | 目录 | 用途 |
 |------|------|
-| `_config/` | 用户手动编辑的配置文件 |
-| `_data/` | 程序运行时数据（向量库、SQLite、爬虫治理记录）**需重点备份** |
+| `_config/` | 用户手动编辑的配置文件（Docker 部署中只读挂载） |
+| `_data/` | 程序运行时数据（向量库、SQLite 含认证库 Authentication.db、爬虫治理记录、备份输出）**需重点备份** |
 | `_export/` | 程序导出的数据（JSON、MongoDB 导出） |
 | `_log/` | 日志文件及历史归档 |
 | `_products/` | 产物目录（预留） |
@@ -176,11 +178,13 @@ python IntelligenceHubLauncher.py
 python CrawlerServiceEngine.py
 ```
 - 自动加载 `CrawlTasks/` 目录下的抓取模块
-- 内置爬虫治理 HTTP 后台（默认端口 `18000`，含日志查看器）
+- 内置爬虫治理 HTTP 后台（默认端口 `8002`，需 `X-Governance-Token` 鉴权；日志查看器由 `PyLoggingBackend` 提供，端口 `18000`）
 
 **C. 向量数据库服务（可选）**
 ```bash
-python VectorDB/VectorDBBService.py \
+# 必须用 -m 方式启动;直接 python VectorDB/VectorDBBService.py 会因
+# 顶层无条件包导入(VectorDB.aggregation.plans 等)而失败。
+python -m VectorDB.VectorDBBService \
   --db-path ./_data/VectorDB \
   --model /path/to/bge-m3 \
   --agg-store-dir ./_data/Aggressive
@@ -211,7 +215,7 @@ python VectorDB/VectorDBBService.py \
   - `unarchived_queue`：重启时加载的未归档数据（低优先级）
   - `vectorize_queue`：待向量化的数据
 - AI 分析线程数由配置 `intelligence_hub.ai_analysis_thread` 控制，建议 ≤ AI 客户端数量
-- 向量化线程在后台无限重试连接 VectorDB，直到成功或收到关闭信号
+- 向量化线程在后台重试连接 VectorDB（指数退避、上限 `MAX_VECTORIZE_RETRIES` 次），超限丢弃并计数告警，收到关闭信号即退出
 
 ### 5.4 错误与重试
 - AI 分析使用 `tenacity` 进行指数退避重试（最多 3 次）
@@ -237,17 +241,20 @@ python VectorDB/VectorDBBService.py \
 
 ## 6. 测试策略
 
-- 项目依赖 `pytest` 和 `pytest-asyncio`，但 `Test/` 目录下目前以**手动演示脚本**为主
-- 没有 CI/CD 流水线，也没有自动化测试套件
-- 如果需要添加测试，建议：
-  1. 在 `Test/` 目录下新增 `test_*.py` 文件
-  2. 对 `ServiceComponent` 中的引擎类（如 `IntelligenceQueryEngine`, `IntelligenceScoringEngine`）编写单元测试
-  3. 对 Pydantic 模型进行边界值测试
+- 单元测试位于 `Test/test_*.py`（unittest 风格），运行器 `_run_tests.py`：
 
-运行测试：
-```bash
-pytest Test/
-```
+  ```bash
+  python _run_tests.py Test.test_m1_config Test.test_m3_wiring Test.test_p0_health ...
+  ```
+
+- `Test/test_m3_queue_mongo.py` 使用 mock collection，不连接真实 MongoDB（见其文件 docstring）；
+  `Test/test_vectordb_fixes.py` 需 chromadb（用 pytest 运行）；
+  本机缺 tldextract/feedparser 等重依赖时相关用例自动跳过。
+- 时间相关测试使用 FakeClock / now_fn 注入；API 调用一律 Mock，
+  不得在普通测试中调用真实付费 API（见 .clinerules/30-testing）。
+- 如果需要添加测试：在 `Test/` 下新增 `test_*.py`（unittest），
+  覆盖边界值、错误路径与 fail-closed 行为。
+- `Test/` 下不带 test_ 前缀的旧文件为手动演示脚本，不属于自动化套件。
 
 ---
 
@@ -260,8 +267,8 @@ pytest Test/
 
 2. **用户认证**
    - 后台页面使用 Flask Session（`SECRET_KEY` 每次启动随机生成，持久会话 7 天）
-   - 密码使用 `bcrypt` 哈希存储在 `_config/Authentication.db`
-   - 可通过 `Scripts/UserManagerConsole.py` 管理用户
+   - 密码使用 `bcrypt` 哈希存储在 `_data/Authentication.db`（P0-2 起默认可写目录；旧位置 `_config/Authentication.db` 首次启动自动迁移复制，可用 `AUTH_DB_PATH` 覆盖）
+   - 可通过 `Scripts/UserManagerConsole.py` 管理用户；登录成功/失败均写 `login_log`
 
 3. **代理与网络**
    - `GlobalConfig.py` 中定义了 `DEFAULT_PROXY`（SOCKS5 `127.0.0.1:10808`）
@@ -278,10 +285,11 @@ pytest Test/
 | 现象 | 排查方向 |
 |------|----------|
 | AI 分析线程一直等待客户端 | 检查 `_config/ai_client_config.py` 是否配置正确；检查 AI 服务余额/网络 |
-| VectorDB 无法初始化 | 确认 `VectorDBBService.py` 已启动；确认模型路径正确；查看 `_log/iis.log` |
+| VectorDB 无法初始化 | 确认 `VectorDBBService.py` 已启动；确认模型路径正确；查看 `_log/iis.log`；四态状态（disabled/initializing/degraded/ok）见 statistics 的 `vector_status` |
 | 向量搜索慢/超时/503 | 检查 VectorDB 的 `logs/vector_perf.log`（或 `VECTOR_PERF_LOG` 指定路径）中 `vectordb_async_search` 耗时；确认 `VECTOR_MAX_CONCURRENT_SEARCHES` 与 `VECTOR_JOB_MAX_WORKERS` 是否满足并发需求；查看 `/api/status/memory` 中 `jobs.search` 指标 |
 | 爬虫不执行 | 检查 `CrawlerServiceEngine.py` 是否启动；检查 `CrawlTasks/` 目录下模块是否有语法错误 |
-| 登录失败 | 确认已通过 `Scripts/UserManagerConsole.py` 创建用户；检查 `_config/Authentication.db` 是否存在 |
+| 登录失败 | 确认已通过 `Scripts/UserManagerConsole.py` 创建用户；检查 `_data/Authentication.db` 是否存在（P0-2 起默认路径；所在目录只读会启动失败并给出迁移指引） |
+| 容器被反复重启 | 区分探活来源：Docker HEALTHCHECK 用浅探活 `/maintenance/ping`（进程存活）；Launcher 用 `?deep=1`（业务就绪：按 `consumer_mode()` 检查消费者线程/Mongo/积压）。只采集/DRY_RUN/Drainer 模式无旧 AI 线程属预期，不应触发重启 |
 | 依赖安装失败 | 先升级 `pip`；若仍失败，尝试 `pip install -r requirements_freeze.txt` |
 
 ---

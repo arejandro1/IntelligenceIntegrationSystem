@@ -365,7 +365,7 @@ python CrawlerServiceEngine.py
     >  
     > + API Token位于配置文件中：[config_example.json](config_example.json)
     > + 登录与注销的页面分别为：'/login'，'/logout'
-    > + 用户信息保存在Authentication.db，通过[UserManagerConsole.py](Scripts/UserManagerConsole.py)管理用户。
+    > + 用户信息保存在Authentication.db（默认位于 _data 目录，_config 下的旧库首次启动自动迁移复制），通过[UserManagerConsole.py](Scripts/UserManagerConsole.py)管理用户。
 
 + WebAPI
     > '/api'接口：采用 [ArbitraryRPC.py](MyPythonUtility/ArbitraryRPC.py) ，不用额外编码或配置即可调用Stub的所有函数，同时支持任意层次的转发调用。
@@ -403,7 +403,7 @@ python CrawlerServiceEngine.py
 为了方便docker等部署需要，本项目将程序和数据分离。数据按其属性置于以下目录中：
 
 + [_config](_config)
-> 配置文件，由用户手动编辑。
+> 配置文件，由用户手动编辑。Docker部署中通常只读挂载（认证数据库位于 _data）。
 
 + [_data](_data)
 > 程序产生或暂存的数据，不要手动编辑。是最重要的目录，也是重点需要备份的目录。包含以下内容：
@@ -411,6 +411,7 @@ python CrawlerServiceEngine.py
 > + 聚类记录
 > + 爬虫抓取记录
 > + AI客户端管理相关文件
+> + 认证数据库 Authentication.db（含登录日志，需可写）
 
 + [_export](_export)
 > 程序导出的数据，比如数据库文件。
@@ -420,6 +421,9 @@ python CrawlerServiceEngine.py
 
 + [_products](_products)
 > 程序的产物目录，预留。
+
++ [recycled](recycled)
+> `recycled/` 为历史废弃代码存档，仅供追溯，禁止在新代码中引用；按规则不得删除或移动。
 
 #### 数据库存储
 
