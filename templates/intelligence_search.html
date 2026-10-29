@@ -1,334 +1,381 @@
-<!DOCTYPE html>
-<html lang="zh">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Intelligence Query</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
-    <link rel="stylesheet" href="/static/css/intelligence_table.css">
+{% extends "base.html" %}
 
-    <style>
-        .search-results-wrapper {
-            margin-top: 24px;
-        }
-        .results-header h3 {
-            color: #343a40;
-            border-bottom: 2px solid #e9ecef;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }
+{% block title %}情报查询 - IIS 情报中心{% endblock %}
 
-        /* 数据源标签 */
-        .source-domains-wrapper {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-        }
-        .source-tag {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 3px 10px;
-            border-radius: 16px;
-            font-size: 0.8rem;
-            cursor: pointer;
-            user-select: none;
-            transition: all 0.15s ease;
-            background-color: #f1f3f5;
-            color: #495057;
-            border: 1px solid #e9ecef;
-        }
-        .source-tag:hover {
-            background-color: #e9ecef;
-        }
-        .source-tag.selected {
-            background-color: #0d6efd;
-            color: #fff;
-            border-color: #0d6efd;
-        }
-        .source-tag .check-icon {
-            display: none;
-            font-size: 0.7rem;
-            margin-left: 1px;
-        }
-        .source-tag.selected .check-icon {
-            display: inline;
-        }
+{% block nav_search %}active{% endblock %}
 
-        /* 双滑块 */
-        .range-slider {
-            position: relative;
-            height: 5px;
-            background: #e9ecef;
-            border-radius: 3px;
-            margin: 10px 8px 6px;
-            cursor: pointer;
-        }
-        .range-slider .range-fill {
-            position: absolute;
-            height: 100%;
-            background: #0d6efd;
-            border-radius: 3px;
-            pointer-events: none;
-        }
-        .range-slider .range-thumb {
-            position: absolute;
-            width: 14px;
-            height: 14px;
-            background: #fff;
-            border: 2px solid #0d6efd;
-            border-radius: 50%;
-            top: 50%;
-            transform: translate(-50%, -50%);
-            cursor: grab;
-            z-index: 2;
-            transition: transform 0.1s;
-        }
-        .range-slider .range-thumb:active {
-            cursor: grabbing;
-            transform: translate(-50%, -50%) scale(1.15);
-        }
-        .range-labels {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.7rem;
-            color: #adb5bd;
-            padding: 0 2px;
-            margin-top: 2px;
-        }
-        .range-value-label {
-            font-size: 0.75rem;
-            color: #0d6efd;
-            font-weight: 600;
-            margin-left: 4px;
-        }
+{% block body_attrs %}data-public-mode="{{ public_mode | tojson }}" data-public-limits="{{ public_limits | tojson |
+forceescape }}"{% endblock %}
 
-        /* flatpickr 微调 */
-        .flatpickr-input {
-            background-color: #fff !important;
-        }
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
 
-        /* 紧凑 */
-        .compact-label {
-            font-size: 0.75rem;
-            color: #6c757d;
-            margin-bottom: 2px;
-            font-weight: 500;
-        }
+<style>
+    .search-results-wrapper {
+        margin-top: 24px;
+    }
 
-        /* 游客模式下禁用的发布时间选择器 */
-        .disabled-publish-time .flatpickr-input,
-        .disabled-publish-time .clear-date-btn {
-            background-color: #e9ecef;
-            cursor: not-allowed;
-        }
-        .disabled-publish-time label {
-            text-decoration: line-through;
-            opacity: 0.7;
-        }
-    </style>
-</head>
-<body data-public-mode='{{ public_mode | tojson }}' data-public-limits='{{ public_limits | tojson }}'>
-    <div class="container py-3">
-        {% if public_mode %}
-        <div class="alert alert-warning alert-dismissible fade show py-2 mb-3" role="alert">
-            <i class="bi bi-info-circle"></i>
-            <strong>游客模式</strong>：仅可搜索最近 {{ public_limits.get('vector_default_window_days', 30) }} 天归档的数据；向量搜索每页最多 {{ public_limits.get('vector_max_per_page', 10) }} 条、最多 {{ public_limits.get('vector_max_page', 2) }} 页、仅摘要库、最低相似度 {{ public_limits.get('vector_min_score_threshold', 0.6) }}。
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    .results-header h3 {
+        color: #343a40;
+        border-bottom: 2px solid #e9ecef;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+    }
+
+    /* 数据源标签 */
+    .source-domains-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .source-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 10px;
+        border-radius: 16px;
+        font-size: 0.8rem;
+        cursor: pointer;
+        user-select: none;
+        transition: all 0.15s ease;
+        background-color: #f1f3f5;
+        color: #495057;
+        border: 1px solid #e9ecef;
+    }
+
+    .source-tag:hover {
+        background-color: #e9ecef;
+    }
+
+    .source-tag.selected {
+        background-color: #0d6efd;
+        color: #fff;
+        border-color: #0d6efd;
+    }
+
+    .source-tag .check-icon {
+        display: none;
+        font-size: 0.7rem;
+        margin-left: 1px;
+    }
+
+    .source-tag.selected .check-icon {
+        display: inline;
+    }
+
+    /* 双滑块 */
+    .range-slider {
+        position: relative;
+        height: 5px;
+        background: #e9ecef;
+        border-radius: 3px;
+        margin: 10px 8px 6px;
+        cursor: pointer;
+    }
+
+    .range-slider .range-fill {
+        position: absolute;
+        height: 100%;
+        background: #0d6efd;
+        border-radius: 3px;
+        pointer-events: none;
+    }
+
+    .range-slider .range-thumb {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        background: #fff;
+        border: 2px solid #0d6efd;
+        border-radius: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        cursor: grab;
+        z-index: 2;
+        transition: transform 0.1s;
+    }
+
+    .range-slider .range-thumb:active {
+        cursor: grabbing;
+        transform: translate(-50%, -50%) scale(1.15);
+    }
+
+    .range-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.7rem;
+        color: #adb5bd;
+        padding: 0 2px;
+        margin-top: 2px;
+    }
+
+    .range-value-label {
+        font-size: 0.75rem;
+        color: #0d6efd;
+        font-weight: 600;
+        margin-left: 4px;
+    }
+
+    /* flatpickr 微调 */
+    .flatpickr-input {
+        background-color: #fff !important;
+    }
+
+    /* 紧凑 */
+    .compact-label {
+        font-size: 0.75rem;
+        color: #6c757d;
+        margin-bottom: 2px;
+        font-weight: 500;
+    }
+
+    /* 游客模式下禁用的发布时间选择器 */
+    .disabled-publish-time .flatpickr-input,
+    .disabled-publish-time .clear-date-btn {
+        background-color: #e9ecef;
+        cursor: not-allowed;
+    }
+
+    .disabled-publish-time label {
+        text-decoration: line-through;
+        opacity: 0.7;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-3">
+    {% if public_mode %}
+    <div class="alert alert-warning alert-dismissible fade show py-2 mb-3" role="alert">
+        <i class="bi bi-info-circle"></i>
+        <strong>游客模式</strong>：仅可搜索最近 {{ public_limits.get('vector_default_window_days', 30) }} 天归档的数据；向量搜索每页最多 {{
+        public_limits.get('vector_max_per_page', 10) }} 条、最多 {{ public_limits.get('vector_max_page', 2) }} 页、仅摘要库、最低相似度
+        {{ public_limits.get('vector_min_score_threshold', 0.6) }}。
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+    <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white py-2">
+            <h6 class="mb-0"><i class="bi bi-search"></i> Intelligence Query</h6>
         </div>
-        {% endif %}
-        <div class="card shadow-sm">
-            <div class="card-header bg-primary text-white py-2">
-                <h6 class="mb-0"><i class="bi bi-search"></i> Intelligence Query</h6>
-            </div>
-            <div class="card-body py-3">
-                <ul class="nav nav-tabs nav-tabs-sm" id="search-mode-tabs" role="tablist">
-                  <li class="nav-item" role="presentation">
-                    <button class="nav-link active py-1 px-3 small" id="mongo-tab" data-bs-toggle="tab" data-bs-target="#mongo-pane" type="button" role="tab" data-mode="mongo">
-                      <i class="bi bi-database"></i> SQL/Mongo
+        <div class="card-body py-3">
+            <ul class="nav nav-tabs nav-tabs-sm" id="search-mode-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active py-1 px-3 small" id="mongo-tab" data-bs-toggle="tab"
+                        data-bs-target="#mongo-pane" type="button" role="tab" data-mode="mongo">
+                        <i class="bi bi-database"></i> SQL/Mongo
                     </button>
-                  </li>
-                  <li class="nav-item" role="presentation">
-                    <button class="nav-link py-1 px-3 small" id="vector-tab" data-bs-toggle="tab" data-bs-target="#vector-pane" type="button" role="tab" data-mode="vector">
-                      <i class="bi bi-stars"></i> Vector AI
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link py-1 px-3 small" id="vector-tab" data-bs-toggle="tab"
+                        data-bs-target="#vector-pane" type="button" role="tab" data-mode="vector">
+                        <i class="bi bi-stars"></i> Vector AI
                     </button>
-                  </li>
-                </ul>
+                </li>
+            </ul>
 
-                <form id="search-form" class="mt-2">
-                    <div class="tab-content" id="search-tab-content">
-                        <!-- Mongo Pane -->
-                        <div class="tab-pane fade show active" id="mongo-pane" role="tabpanel">
-                            <div class="mb-2">
-                                <label class="compact-label">Keywords</label>
-                                <input type="text" class="form-control form-control-sm" name="keywords" placeholder="Keywords">
+            <form id="search-form" class="mt-2" aria-label="情报搜索条件">
+                <div class="tab-content" id="search-tab-content">
+                    <!-- Mongo Pane -->
+                    <div class="tab-pane fade show active" id="mongo-pane" role="tabpanel">
+                        <div class="mb-2">
+                            <label class="compact-label" for="keywords-mongo">Keywords</label>
+                            <input type="text" class="form-control form-control-sm" id="keywords-mongo" name="keywords"
+                                placeholder="Keywords">
+                        </div>
+
+                        <div class="row g-2">
+                            <div class="col-md-3 public-publish-time-group">
+                                <label class="compact-label">Publish Time <span
+                                        class="tz-suffix-label">()</span></label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" class="form-control form-control-sm flatpickr-range"
+                                        id="date-range-mongo" placeholder="Pick date range...">
+                                    <button type="button" class="btn btn-outline-secondary clear-date-btn"
+                                        data-target="date-range-mongo" title="清空" aria-label="清空发布时间范围">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                </div>
+                                <input type="hidden" name="start_time" id="start-time-mongo">
+                                <input type="hidden" name="end_time" id="end-time-mongo">
                             </div>
-
-                            <div class="row g-2">
-                                <div class="col-md-3 public-publish-time-group">
-                                    <label class="compact-label">Publish Time (UTC)</label>
-                                    <div class="input-group input-group-sm">
-                                        <input type="text" class="form-control form-control-sm flatpickr-range" id="date-range-mongo" placeholder="Pick date range...">
-                                        <button type="button" class="btn btn-outline-secondary clear-date-btn" data-target="date-range-mongo" title="清空">
-                                            <i class="bi bi-x"></i>
-                                        </button>
-                                    </div>
-                                    <input type="hidden" name="start_time" id="start-time-mongo">
-                                    <input type="hidden" name="end_time" id="end-time-mongo">
+                            <div class="col-md-3 public-archive-time-group">
+                                <label class="compact-label">Archive Time <span
+                                        class="tz-suffix-label">()</span></label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" class="form-control form-control-sm flatpickr-range"
+                                        id="date-range-archive-mongo" placeholder="Pick archive range...">
+                                    <button type="button" class="btn btn-outline-secondary clear-date-btn"
+                                        data-target="date-range-archive-mongo" title="清空归档时间范围">
+                                        <i class="bi bi-x"></i>
+                                    </button>
                                 </div>
-                                <div class="col-md-3 public-archive-time-group">
-                                    <label class="compact-label">Archive Time (UTC)</label>
-                                    <div class="input-group input-group-sm">
-                                        <input type="text" class="form-control form-control-sm flatpickr-range" id="date-range-archive-mongo" placeholder="Pick archive range...">
-                                        <button type="button" class="btn btn-outline-secondary clear-date-btn" data-target="date-range-archive-mongo" title="清空">
-                                            <i class="bi bi-x"></i>
-                                        </button>
-                                    </div>
-                                    <input type="hidden" name="archive_start_time" id="archive-start-time-mongo">
-                                    <input type="hidden" name="archive_end_time" id="archive-end-time-mongo">
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="compact-label">Score Range <span class="range-value-label" id="score-label-mongo">0 - 10</span></label>
-                                    <div class="range-slider" id="slider-mongo" data-min="0" data-max="10" data-step="0.5" data-decimal="1"></div>
-                                    <div class="range-labels"><span>0</span><span>10</span></div>
-                                    <input type="hidden" name="threshold_min" id="threshold-min-mongo" value="0">
-                                    <input type="hidden" name="threshold_max" id="threshold-max-mongo" value="10">
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="compact-label">Per Page</label>
-                                    <select class="form-select form-select-sm" name="per_page">
-                                        <option value="10" selected>10</option>
-                                        <option value="20">20</option>
-                                        <option value="50">50</option>
-                                    </select>
-                                </div>
+                                <input type="hidden" name="archive_start_time" id="archive-start-time-mongo">
+                                <input type="hidden" name="archive_end_time" id="archive-end-time-mongo">
                             </div>
-
-                            <div class="row g-2 mt-1">
-                                <div class="col-md-3">
-                                    <input type="text" class="form-control form-control-sm" name="locations" placeholder="Locations">
-                                </div>
-                                <div class="col-md-3">
-                                    <input type="text" class="form-control form-control-sm" name="geography" placeholder="Geography">
-                                </div>
-                                <div class="col-md-3">
-                                    <input type="text" class="form-control form-control-sm" name="peoples" placeholder="Peoples">
-                                </div>
-                                <div class="col-md-3">
-                                    <input type="text" class="form-control form-control-sm" name="organizations" placeholder="Organizations">
-                                </div>
+                            <div class="col-md-3">
+                                <label class="compact-label">Score Range <span class="range-value-label"
+                                        id="score-label-mongo">0 - 10</span></label>
+                                <div class="range-slider" id="slider-mongo" data-min="0" data-max="10" data-step="0.5"
+                                    data-decimal="1"></div>
+                                <div class="range-labels"><span>0</span><span>10</span></div>
+                                <input type="hidden" name="threshold_min" id="threshold-min-mongo" value="0">
+                                <input type="hidden" name="threshold_max" id="threshold-max-mongo" value="10">
                             </div>
-
-                            <div class="mt-2">
-                                <label class="compact-label">Sources</label>
-                                <div class="source-domains-wrapper" id="source-domains-container">
-                                    <span class="text-muted small">Loading...</span>
-                                </div>
+                            <div class="col-md-3">
+                                <label class="compact-label">Per Page</label>
+                                <select class="form-select form-select-sm" name="per_page">
+                                    <option value="10" selected>10</option>
+                                    <option value="20">20</option>
+                                    <option value="50">50</option>
+                                </select>
                             </div>
                         </div>
 
-                        <!-- Vector Pane -->
-                        <div class="tab-pane fade" id="vector-pane" role="tabpanel">
-                            <div class="mb-2">
-                                <label class="compact-label">Keywords / Natural Language</label>
-                                <textarea class="form-control form-control-sm" name="keywords_vector" rows="2" placeholder="Describe what you are looking for..."></textarea>
+                        <div class="row g-2 mt-1">
+                            <div class="col-md-3">
+                                <input type="text" class="form-control form-control-sm" name="locations"
+                                    placeholder="Locations" aria-label="Locations">
                             </div>
-
-                            <div class="row g-2">
-                                <div class="col-md-3 public-publish-time-group">
-                                    <label class="compact-label">Publish Time (UTC)</label>
-                                    <div class="input-group input-group-sm">
-                                        <input type="text" class="form-control form-control-sm flatpickr-range" id="date-range-vector" placeholder="Pick date range...">
-                                        <button type="button" class="btn btn-outline-secondary clear-date-btn" data-target="date-range-vector" title="清空">
-                                            <i class="bi bi-x"></i>
-                                        </button>
-                                    </div>
-                                    <input type="hidden" name="start_time" id="start-time-vector">
-                                    <input type="hidden" name="end_time" id="end-time-vector">
-                                </div>
-                                <div class="col-md-3 public-archive-time-group">
-                                    <label class="compact-label">Archive Time (UTC)</label>
-                                    <div class="input-group input-group-sm">
-                                        <input type="text" class="form-control form-control-sm flatpickr-range" id="date-range-archive-vector" placeholder="Pick archive range...">
-                                        <button type="button" class="btn btn-outline-secondary clear-date-btn" data-target="date-range-archive-vector" title="清空">
-                                            <i class="bi bi-x"></i>
-                                        </button>
-                                    </div>
-                                    <input type="hidden" name="archive_start_time" id="archive-start-time-vector">
-                                    <input type="hidden" name="archive_end_time" id="archive-end-time-vector">
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="compact-label">Similarity <span class="range-value-label" id="score-label-vector">0.0 - 1.0</span></label>
-                                    <div class="range-slider" id="slider-vector" data-min="0" data-max="1" data-step="0.05" data-decimal="2"></div>
-                                    <div class="range-labels"><span>0</span><span>1</span></div>
-                                    <input type="hidden" name="score_threshold_min" id="score-threshold-min-vector" value="0">
-                                    <input type="hidden" name="score_threshold_max" id="score-threshold-max-vector" value="1">
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="compact-label">Per Page</label>
-                                    <select class="form-select form-select-sm" name="per_page">
-                                        <option value="10" selected>10</option>
-                                        <option value="20">20</option>
-                                        <option value="50">50</option>
-                                    </select>
-                                </div>
+                            <div class="col-md-3">
+                                <input type="text" class="form-control form-control-sm" name="geography"
+                                    placeholder="Geography" aria-label="Geography">
                             </div>
-
-                            <div class="row g-2 mt-1 align-items-center">
-                                <div class="col-12">
-                                    <div class="form-check form-check-inline form-check-sm small">
-                                        <input class="form-check-input" type="checkbox" id="in_summary" name="in_summary" checked>
-                                        <label class="form-check-label" for="in_summary" style="font-size: 0.8rem;">Search in Summary</label>
-                                    </div>
-                                    <div class="form-check form-check-inline form-check-sm small">
-                                        <input class="form-check-input" type="checkbox" id="in_fulltext" name="in_fulltext">
-                                        <label class="form-check-label" for="in_fulltext" style="font-size: 0.8rem;">Search in Full-text</label>
-                                    </div>
-                                </div>
+                            <div class="col-md-3">
+                                <input type="text" class="form-control form-control-sm" name="peoples"
+                                    placeholder="Peoples" aria-label="Peoples">
                             </div>
+                            <div class="col-md-3">
+                                <input type="text" class="form-control form-control-sm" name="organizations"
+                                    placeholder="Organizations" aria-label="Organizations">
+                            </div>
+                        </div>
 
-                            <div class="mt-2">
-                                <label class="compact-label">Sources</label>
-                                <div class="source-domains-wrapper" id="source-domains-container-vector">
-                                    <span class="text-muted small">Loading...</span>
-                                </div>
+                        <div class="mt-2">
+                            <label class="compact-label" id="sources-label-mongo">Sources</label>
+                            <div class="source-domains-wrapper" id="source-domains-container"
+                                aria-labelledby="sources-label-mongo">
+                                <span class="text-muted small">Loading...</span>
                             </div>
                         </div>
                     </div>
 
-                    <div class="d-flex justify-content-end mt-3">
-                        <button type="submit" class="btn btn-primary btn-sm px-4" id="search-button">
-                            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-                            Search
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
+                    <!-- Vector Pane -->
+                    <div class="tab-pane fade" id="vector-pane" role="tabpanel">
+                        <div class="mb-2">
+                            <label class="compact-label" for="keywords-vector">Keywords / Natural Language</label>
+                            <textarea class="form-control form-control-sm" id="keywords-vector" name="keywords_vector"
+                                rows="2" placeholder="Describe what you are looking for..."></textarea>
+                        </div>
 
-        <div id="results-wrapper" class="search-results-wrapper" style="display: none;">
-            <div class="article-list">
-                <div class="results-header">
-                    <h3>Query Results</h3>
-                    <div class="text-secondary mb-3">
-                        Found <strong id="results-total" class="text-dark">0</strong> records
-                        (Showing <span id="results-count">0</span>)
+                        <div class="row g-2">
+                            <div class="col-md-3 public-publish-time-group">
+                                <label class="compact-label">Publish Time <span
+                                        class="tz-suffix-label">()</span></label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" class="form-control form-control-sm flatpickr-range"
+                                        id="date-range-vector" placeholder="Pick date range...">
+                                    <button type="button" class="btn btn-outline-secondary clear-date-btn"
+                                        data-target="date-range-vector" title="清空发布时间范围">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                </div>
+                                <input type="hidden" name="start_time" id="start-time-vector">
+                                <input type="hidden" name="end_time" id="end-time-vector">
+                            </div>
+                            <div class="col-md-3 public-archive-time-group">
+                                <label class="compact-label">Archive Time <span
+                                        class="tz-suffix-label">()</span></label>
+                                <div class="input-group input-group-sm">
+                                    <input type="text" class="form-control form-control-sm flatpickr-range"
+                                        id="date-range-archive-vector" placeholder="Pick archive range...">
+                                    <button type="button" class="btn btn-outline-secondary clear-date-btn"
+                                        data-target="date-range-archive-vector" title="清空归档时间范围">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                </div>
+                                <input type="hidden" name="archive_start_time" id="archive-start-time-vector">
+                                <input type="hidden" name="archive_end_time" id="archive-end-time-vector">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="compact-label">Similarity <span class="range-value-label"
+                                        id="score-label-vector">0.0 - 1.0</span></label>
+                                <div class="range-slider" id="slider-vector" data-min="0" data-max="1" data-step="0.05"
+                                    data-decimal="2"></div>
+                                <div class="range-labels"><span>0</span><span>1</span></div>
+                                <input type="hidden" name="score_threshold_min" id="score-threshold-min-vector"
+                                    value="0">
+                                <input type="hidden" name="score_threshold_max" id="score-threshold-max-vector"
+                                    value="1">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="compact-label">Per Page</label>
+                                <select class="form-select form-select-sm" name="per_page">
+                                    <option value="10" selected>10</option>
+                                    <option value="20">20</option>
+                                    <option value="50">50</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mt-1 align-items-center">
+                            <div class="col-12">
+                                <div class="form-check form-check-inline form-check-sm small">
+                                    <input class="form-check-input" type="checkbox" id="in_summary" name="in_summary"
+                                        checked>
+                                    <label class="form-check-label" for="in_summary" style="font-size: 0.8rem;">Search
+                                        in Summary</label>
+                                </div>
+                                <div class="form-check form-check-inline form-check-sm small">
+                                    <input class="form-check-input" type="checkbox" id="in_fulltext" name="in_fulltext">
+                                    <label class="form-check-label" for="in_fulltext" style="font-size: 0.8rem;">Search
+                                        in Full-text</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-2">
+                            <label class="compact-label" id="sources-label-vector">Sources</label>
+                            <div class="source-domains-wrapper" id="source-domains-container-vector"
+                                aria-labelledby="sources-label-vector">
+                                <span class="text-muted small">Loading...</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="pagination-container"></div>
-                <div id="article-list-content"></div>
-                <div class="pagination-container"></div>
-            </div>
+
+                <div class="d-flex justify-content-end mt-3">
+                    <button type="submit" class="btn btn-primary btn-sm px-4" id="search-button">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        Search
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
-    <script src="/static/js/article_detail_renderer.js"></script>
-    <script src="/static/js/intelligence_table_renderer.js"></script>
-    <script src="/static/js/article_modal_manager.js"></script>
-    <script src="/static/js/intelligence_search.js"></script>
-</body>
-</html>
+    <div id="results-wrapper" class="search-results-wrapper" style="display: none;">
+        <div class="article-list" aria-live="polite">
+            <div class="results-header">
+                <h3>Query Results</h3>
+                <div class="text-secondary mb-3" role="status">
+                    Found <strong id="results-total" class="text-dark">0</strong> records
+                    (Showing <span id="results-count">0</span>)
+                </div>
+            </div>
+            <div class="pagination-container"></div>
+            <div id="article-list-content"></div>
+            <div class="pagination-container"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+<script src="/static/js/article_detail_renderer.js"></script>
+<script src="/static/js/intelligence_table_renderer.js"></script>
+<script src="/static/js/article_modal_manager.js"></script>
+<script src="/static/js/intelligence_search.js"></script>
+{% endblock %}

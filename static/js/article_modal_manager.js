@@ -18,6 +18,7 @@
         options: { ...DEFAULT_OPTIONS },
 
         overlay: null,
+        modalEl: null,
         bodyEl: null,
         titleEl: null,
         uuidEl: null,
@@ -56,7 +57,7 @@
             <div class="article-modal-header">
               <div class="header-left">
                 <div class="uuid" id="article-modal-uuid"></div>
-                <h2 id="article-modal-title" class="article-modal-title">Loading...</h2>
+              <h2 id="article-modal-title" class="article-modal-title">加载中…</h2>
               </div>
               <div class="article-modal-actions">
                 <button type="button" id="article-copy-link-btn" class="article-modal-btn" title="复制链接">
@@ -73,7 +74,7 @@
 
             <div class="article-modal-body" id="article-modal-body">
               <div class="article-modal-loading">
-                <i class="bi bi-arrow-repeat article-spinner"></i> Loading...
+                <i class="bi bi-arrow-repeat article-spinner"></i> 加载中…
               </div>
             </div>
 
@@ -87,12 +88,18 @@
 
     function bindDomRefs() {
         state.overlay = document.getElementById('article-detail-overlay');
+        state.modalEl = state.overlay?.querySelector('.article-modal') || null;
         state.bodyEl = document.getElementById('article-modal-body');
         state.titleEl = document.getElementById('article-modal-title');
         state.uuidEl = document.getElementById('article-modal-uuid');
         state.closeBtn = document.getElementById('article-close-btn');
         state.copyBtn = document.getElementById('article-copy-link-btn');
         state.openNewBtn = document.getElementById('article-open-newtab-btn');
+
+        state.copyBtn?.setAttribute('aria-label', '复制链接');
+        state.openNewBtn?.setAttribute('aria-label', '在新标签页打开');
+        state.closeBtn?.setAttribute('aria-label', '关闭详情弹窗');
+        state.modalEl?.setAttribute('tabindex', '-1');
     }
 
     function setLoading(uuid) {
@@ -101,11 +108,11 @@
         state.overlay.setAttribute('aria-hidden', 'false');
         document.body.classList.add('body-scroll-locked');
 
-        state.titleEl.textContent = 'Loading...';
+        state.titleEl.textContent = '加载中…';
         state.uuidEl.textContent = uuid ? `UUID: ${uuid}` : '';
         state.bodyEl.innerHTML = `
             <div class="article-modal-loading">
-                <i class="bi bi-arrow-repeat article-spinner"></i> Loading...
+                <i class="bi bi-arrow-repeat article-spinner"></i> 加载中…
             </div>`;
     }
 
@@ -114,7 +121,7 @@
         const resp = await fetch(url);
 
         if (resp.status === 401) {
-            throw new Error('You are not authorized.');
+            throw new Error('当前会话无权访问该情报。');
         }
         if (!resp.ok) {
             throw new Error(`HTTP ${resp.status}`);
@@ -153,7 +160,7 @@
                 if (window.ArticleDetailRenderer?.showToast) {
                     window.ArticleDetailRenderer.showToast(
                         state.options.toastContainerId,
-                        'Link copied!',
+                        '链接已复制',
                         'success'
                     );
                 }
@@ -161,7 +168,7 @@
                 if (window.ArticleDetailRenderer?.showToast) {
                     window.ArticleDetailRenderer.showToast(
                         state.options.toastContainerId,
-                        'Copy failed',
+                        '复制失败，请手动复制地址',
                         'danger'
                     );
                 }
@@ -171,7 +178,7 @@
 
     function bindOpenNewTabButton(pageUrl) {
         if (!state.openNewBtn) return;
-        state.openNewBtn.onclick = () => window.open(pageUrl, '_blank', 'noopener');
+        state.openNewBtn.onclick = () => window.open(pageUrl, '_blank', 'noopener,noreferrer');
     }
 
     async function open(pageUrl, uuid, titleFallback, opts = {}) {
@@ -218,8 +225,12 @@
             bindCopyButton(state.currentPageUrl);
             bindModalInnerArticleLinks();
         } catch (err) {
-            state.titleEl.textContent = 'Load Failed';
-            state.bodyEl.innerHTML = `<div style="color:#c00;">Failed to load: ${String(err.message || err)}</div>`;
+            state.titleEl.textContent = '加载失败';
+            const error = document.createElement('div');
+            error.style.color = '#b42318';
+            error.setAttribute('role', 'alert');
+            error.textContent = `加载失败：${err.message || err || '请稍后重试'}`;
+            state.bodyEl.replaceChildren(error);
         }
     }
 
@@ -277,8 +288,33 @@
     }
 
     function onKeydown(e) {
-        if (e.key === 'Escape' && state.isOpen) {
+        if (!state.isOpen) return;
+
+        if (e.key === 'Escape') {
             close();
+            return;
+        }
+
+        if (e.key !== 'Tab' || !state.modalEl) return;
+
+        const focusable = Array.from(state.modalEl.querySelectorAll(
+            'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )).filter(el => el.offsetParent !== null);
+
+        if (!focusable.length) {
+            e.preventDefault();
+            state.modalEl.focus();
+            return;
+        }
+
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
         }
     }
 

@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const clusters = data.clusters || [];
 
             if (clusters.length === 0) {
-                listContainer.innerHTML = '<p style="text-align:center; padding: 50px;">No Aggregated Clusters Available</p>';
+                listContainer.innerHTML = '<p class="empty-state" role="status">暂无可用的聚合情报</p>';
                 return;
             }
 
@@ -33,31 +33,38 @@ document.addEventListener('DOMContentLoaded', () => {
             let html = '';
             clusters.forEach(cluster => {
                 const doc = cluster.repr_doc;
+                const clusterId = String(cluster.cluster_id || '');
+                const clusterIdHtml = renderer.escapeHTML(clusterId);
+                const clusterIdAttr = encodeURIComponent(clusterId);
                 // 利用重构后的 generateArticleCardHtml 单独生成代表文章的卡片
                 const reprCardHtml = renderer.generateArticleCardHtml(doc);
 
                 // 只有 size > 1 时才显示展开按钮
 
-                const hasToggle = cluster.size > 1;
+                const clusterSize = Number(cluster.size) || 0;
+                const relatedCount = Math.max(0, clusterSize - 1);
+                const hasToggle = relatedCount > 0;
 
                 const toggleBtn = hasToggle
                     ? `<button class="cluster-toggle-btn"
-                               data-cluster-id="${cluster.cluster_id}"
-                               data-related-count="${cluster.size - 1}">
-                         <i class="bi bi-chevron-down"></i> Expand (${cluster.size - 1} related)
+                               data-cluster-id="${clusterIdAttr}"
+                               data-related-count="${relatedCount}"
+                               aria-expanded="false"
+                               aria-controls="members-${clusterIdAttr}">
+                         <i class="bi bi-chevron-down"></i> 展开（${relatedCount} 条相关情报）
                        </button>`
                     : '';
 
                 html += `
-                <div class="cluster-container" data-cluster-id="${cluster.cluster_id}">
+                <div class="cluster-container" data-cluster-id="${clusterIdAttr}">
                     <div class="cluster-badge">
-                        <i class="bi bi-diagram-3"></i> Cluster ID: ${cluster.cluster_id} • Total: ${cluster.size}
+                        <i class="bi bi-diagram-3"></i> Cluster ID: ${clusterIdHtml} • Total: ${cluster.size}
                     </div>
                     <div class="cluster-header ${hasToggle ? 'has-toggle' : ''}">
                         ${toggleBtn}
                         ${reprCardHtml}
                     </div>
-                    <div class="cluster-members" id="members-${cluster.cluster_id}"></div>
+                    <div class="cluster-members" id="members-${clusterIdAttr}"></div>
                 </div>`;
             });
 
@@ -78,8 +85,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const btn = e.target.closest('.cluster-toggle-btn, .cluster-inline-collapse-btn');
         if (!btn) return;
 
-        const clusterId = btn.getAttribute('data-cluster-id');
-        const membersDiv = document.getElementById(`members-${clusterId}`);
+        const clusterId = decodeURIComponent(btn.getAttribute('data-cluster-id') || '');
+        const membersDiv = document.getElementById(`members-${encodeURIComponent(clusterId)}`);
         const containerEl = btn.closest('.cluster-container');
         const topBtn = containerEl ? containerEl.querySelector('.cluster-toggle-btn[data-cluster-id]') : null;
         const relatedCount = topBtn ? topBtn.getAttribute('data-related-count') : '';
@@ -95,7 +102,8 @@ document.addEventListener('DOMContentLoaded', () => {
             membersDiv.classList.remove('expanded');
 
             if (topBtn) {
-                topBtn.innerHTML = `<i class="bi bi-chevron-down"></i> Expand (${relatedCount} related)`;
+                topBtn.innerHTML = `<i class="bi bi-chevron-down"></i> 展开（${relatedCount} 条相关情报）`;
+                topBtn.setAttribute('aria-expanded', 'false');
             }
             return;
         }
@@ -109,16 +117,17 @@ document.addEventListener('DOMContentLoaded', () => {
         membersDiv.classList.add('expanded');
 
         if (topBtn) {
-            topBtn.innerHTML = `<i class="bi bi-chevron-up"></i> Collapse`;
+            topBtn.innerHTML = `<i class="bi bi-chevron-up"></i> 收起`;
+            topBtn.setAttribute('aria-expanded', 'true');
         }
 
         // 如果已经加载过，直接返回
         if (membersDiv.innerHTML.trim() !== '') return;
 
-        membersDiv.innerHTML = `<div class="loading-spinner"><i class="bi bi-arrow-repeat article-spinner"></i> Loading members...</div>`;
+        membersDiv.innerHTML = `<div class="loading-spinner" role="status"><i class="bi bi-arrow-repeat article-spinner"></i> 正在加载相关情报…</div>`;
 
         try {
-            const resp = await fetch(`/api/clusters/${clusterId}/members?source=online&sort_by=time&desc=1&limit=500`);
+            const resp = await fetch(`/api/clusters/${encodeURIComponent(clusterId)}/members?source=online&sort_by=time&desc=1&limit=500`);
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
             const data = await resp.json();
@@ -130,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const filteredItems = items.filter(item => item.uuid !== reprUuid);
 
             if (filteredItems.length === 0) {
-                membersDiv.innerHTML = '<p style="color:#666; font-size: 0.9em;">No other members in this cluster.</p>';
+                membersDiv.innerHTML = '<p class="empty-state" role="status">该聚合暂无其他情报</p>';
                 return;
             }
 
@@ -138,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="cluster-member-item">
                     ${renderer.generateArticleCardHtml(item.doc)}
                     <div class="cluster-member-actions">
-                        <button class="cluster-inline-collapse-btn" data-cluster-id="${clusterId}">
+                            <button class="cluster-inline-collapse-btn" data-cluster-id="${encodeURIComponent(clusterId)}">
                             <i class="bi bi-chevron-up"></i> Collapse
                         </button>
                     </div>
@@ -151,7 +160,11 @@ document.addEventListener('DOMContentLoaded', () => {
             renderer.updateTimeBackgrounds();
 
         } catch (err) {
-            membersDiv.innerHTML = `<div style="color:red;">Error loading members: ${err.message}</div>`;
+            const error = document.createElement('div');
+            error.style.color = '#b42318';
+            error.setAttribute('role', 'alert');
+            error.textContent = `加载成员失败：${err.message || '请稍后重试'}`;
+            membersDiv.replaceChildren(error);
         }
     });
 

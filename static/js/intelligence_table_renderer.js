@@ -9,6 +9,7 @@ class ArticleRenderer {
         this.listContainer = document.getElementById(listContainerId);
         this.paginationClass = paginationContainerClass;
         this.promptCache = new Map();
+        this.promptLastFocus = null;
         this.initPromptViewer();
         this.initAutoRefresh();
     }
@@ -32,36 +33,42 @@ class ArticleRenderer {
 
     showLoading() {
         if (this.listContainer) {
+            this.listContainer.setAttribute('aria-busy', 'true');
             // 移除 Bootstrap spinner，改用纯文字或自定义样式
             this.listContainer.innerHTML = `
                 <div class="loading-spinner">
-                    Loading Intelligences...
+                    正在加载情报…
                 </div>`;
         }
     }
 
-    showError(message) {
+    showError(message, actionLink = null) {
         if (this.listContainer) {
-            this.listContainer.innerHTML = `
-                <div style="color: red; padding: 20px; text-align: center;">
-                    Error: ${message}
-                </div>`;
+            this.listContainer.setAttribute('aria-busy', 'false');
+            const error = document.createElement('div');
+            error.style.cssText = 'color: #b42318; padding: 20px; text-align: center;';
+            error.setAttribute('role', 'alert');
+            error.textContent = `加载失败：${message || '请稍后重试'}`;
+            // 可选的后续动作链接（如“前往登录”）
+            if (actionLink && actionLink.href && actionLink.text) {
+                const link = document.createElement('a');
+                link.href = actionLink.href;
+                link.textContent = actionLink.text;
+                link.style.cssText = 'margin-left: 8px;';
+                error.appendChild(link);
+            }
+            this.listContainer.replaceChildren(error);
         }
     }
 
     formatLocalTime(timeStr) {
         if (!timeStr) return 'No Datetime';
 
-        // 尝试解析时间
-        // 技巧：如果后端传的是 "2023-10-10 10:00:00" 这种不带时区的格式且你确定它是GMT，
-        // 你可能需要在字符串后加 'Z' 或 ' GMT'，但在标准 ISO8601 格式下直接 parse 即可。
+        // 后端统一返回带偏移的 ISO 8601 字符串，直接解析即可
         let date = new Date(timeStr);
 
         // 如果解析失败（例如 Invalid Date），直接返回原字符串
         if (isNaN(date.getTime())) {
-            // 尝试处理常见的 Python 默认字符串格式 (如果 new Date 失败的话)
-            // 这里做一个兼容：如果原来不含时区信息，为了保险起见，可以视为 UTC
-            // date = new Date(timeStr + 'Z');
             return timeStr;
         }
 
@@ -83,23 +90,24 @@ class ArticleRenderer {
         const appendix = article.APPENDIX || {};
 
         // 1.2 ID 获取
-        const uuid = this.escapeHTML(article.UUID || "Unknown-UUID");
-        const intelUrl = `/intelligence/${uuid}`;
+        const rawUuid = String(article.UUID || "Unknown-UUID");
+        const uuid = this.escapeHTML(rawUuid);
+        const intelUrl = `/intelligence/${encodeURIComponent(rawUuid)}`;
 
         // 1.3 来源获取 (兼容 v2:INFORMANT, v1:informant, source)
         const informant_val = article.INFORMANT || article.informant || article.source || "";
         const informant = this.escapeHTML(informant_val);
-        const informant_html = this.isValidUrl(informant)
-            ? `<a href="${informant}" target="_blank" class="source-link">${informant}</a>`
+        const informant_html = this.isValidUrl(informant_val)
+            ? `<a href="${this.escapeHTML(informant_val)}" target="_blank" rel="noopener noreferrer" class="source-link">${informant}</a>`
             : (informant || 'Unknown Source');
 
         // 1.4 发布时间获取 (兼容 v2:APPENDIX, v1:PUB_TIME, 采集时间兜底)
         const pub_time_raw = appendix['__TIME_PUB__'] || article.PUB_TIME || article.pub_time || article.collect_time;
-        const pub_time_display = this.formatLocalTime(pub_time_raw);
+        const pub_time_display = this.escapeHTML(this.formatLocalTime(pub_time_raw));
 
         // 1.5 归档时间获取 (用于背景变色，必须在顶部定义)
         const raw_archived_time = appendix['__TIME_ARCHIVED__'] || '';
-        const archived_time_display = this.formatLocalTime(raw_archived_time);
+        const archived_time_display = this.escapeHTML(this.formatLocalTime(raw_archived_time));
 
         // 生成归档时间 HTML 片段
         let archived_html = "";
@@ -108,7 +116,8 @@ class ArticleRenderer {
         }
 
         // 1.6 向量评分 (Vector Score)
-        const vector_score = appendix['__VECTOR_SCORE__'];
+        const isAuthenticated = window.IS_AUTHENTICATED === true;
+        const vector_score = isAuthenticated ? appendix['__VECTOR_SCORE__'] : undefined;
         let vector_score_html = "";
         if (vector_score !== undefined && vector_score !== null) {
             const formattedScore = parseFloat(vector_score).toFixed(3);
@@ -179,12 +188,12 @@ class ArticleRenderer {
 
         // 3. 构建右侧调试信息 (right_content)
         let right_content = "";
-        if (ai_service || ai_model) {
+        if (isAuthenticated && (ai_service || ai_model)) {
             if (ai_service) right_content += `<div><span class="debug-label">Service:</span><span class="debug-value-truncate" title="${ai_service}">${ai_service}</span></div>`;
             if (ai_model) right_content += `<div><span class="debug-label">Model:</span><span class="debug-value-truncate" title="${ai_model}">${ai_model}</span></div>`;
         }
 
-        if (is_v2 && prompt_version) {
+        if (isAuthenticated && is_v2 && prompt_version) {
             const pvEscaped = this.escapeHTML(prompt_version);
             right_content += `
               <div>
@@ -214,6 +223,7 @@ class ArticleRenderer {
             </div>
             <p class="article-summary">${this.escapeHTML(article.EVENT_BRIEF || "No Brief")}</p>
 
+            ${isAuthenticated ? `
             <div class="debug-info">
                 <div class="debug-left">
                     ${left_content}
@@ -221,7 +231,7 @@ class ArticleRenderer {
                 <div class="debug-right">
                     ${right_content}
                 </div>
-            </div>
+            </div>` : ''}
         </div>`;
     }
 
@@ -229,11 +239,13 @@ class ArticleRenderer {
         if (!this.listContainer) return;
 
         if (!articles || articles.length === 0) {
-            this.listContainer.innerHTML = '<p style="text-align:center; padding: 50px;">NO Intelligence</p>';
+            this.listContainer.setAttribute('aria-busy', 'false');
+            this.listContainer.innerHTML = '<p class="empty-state" role="status">暂无符合条件的情报</p>';
             return;
         }
 
         const html = articles.map(article => this.generateArticleCardHtml(article)).join('');
+        this.listContainer.setAttribute('aria-busy', 'false');
         this.listContainer.innerHTML = html;
     }
 
@@ -290,29 +302,29 @@ class ArticleRenderer {
         //     <a class="page-btn next">Next</a>
         // </div>
 
-        let html = '<div class="pagination">';
+        let html = '<nav class="pagination" aria-label="Pagination">';
 
         // 首页按钮 (可选，根据你的习惯)
         if (has_prev) {
-            html += `<a class="page-btn" data-page="1">First</a>`;
-            html += `<a class="page-btn" data-page="${current_page - 1}">Prev</a>`;
+            html += `<button type="button" class="page-btn" data-page="1" aria-label="First page">First</button>`;
+            html += `<button type="button" class="page-btn" data-page="${current_page - 1}" aria-label="Previous page">Prev</button>`;
         } else {
             // 保持布局稳定的占位符或禁用状态
-             html += `<span class="page-btn disabled">First</span>`;
-             html += `<span class="page-btn disabled">Prev</span>`;
+             html += `<button type="button" class="page-btn disabled" disabled aria-disabled="true" aria-label="First page">First</button>`;
+             html += `<button type="button" class="page-btn disabled" disabled aria-disabled="true" aria-label="Previous page">Prev</button>`;
         }
 
         // 中间信息
-        html += `<span class="page-info">${current_page} / ${total_pages} (Total: ${total_results})</span>`;
+        html += `<span class="page-info" aria-live="polite">${current_page} / ${total_pages} (Total: ${total_results})</span>`;
 
         // 下一页按钮
         if (has_next) {
-            html += `<a class="page-btn" data-page="${current_page + 1}">Next</a>`;
+            html += `<button type="button" class="page-btn" data-page="${current_page + 1}" aria-label="Next page">Next</button>`;
         } else {
-            html += `<span class="page-btn disabled">Next</span>`;
+            html += `<button type="button" class="page-btn disabled" disabled aria-disabled="true" aria-label="Next page">Next</button>`;
         }
 
-        html += '</div>';
+        html += '</nav>';
 
         // 填充到所有分页容器中
         containers.forEach(el => el.innerHTML = html);
@@ -343,7 +355,7 @@ class ArticleRenderer {
         container.querySelectorAll('.archived-time').forEach(el => {
             const archivedStr = el.dataset.archived;
             if(!archivedStr) return;
-            const archivedTime = new Date(archivedStr.replace(/-/g, '/')).getTime();
+            const archivedTime = new Date(archivedStr).getTime(); // ISO 8601 直接解析
             if (isNaN(archivedTime)) return;
             const timeDiff = now - archivedTime;
             let ratio = Math.min(1, Math.max(0, timeDiff / twelveHours));
@@ -392,9 +404,16 @@ class ArticleRenderer {
                 const highlightPart = getHighlightDomain(hostname);
                 const originalText = link.textContent;
                 if (originalText && originalText.includes(highlightPart)) {
-                    link.innerHTML = originalText.replace(
-                        highlightPart,
-                        `<span class="domain-highlight">${highlightPart}</span>`
+                    const start = originalText.indexOf(highlightPart);
+                    const prefix = originalText.slice(0, start);
+                    const suffix = originalText.slice(start + highlightPart.length);
+                    link.replaceChildren(
+                        document.createTextNode(prefix),
+                        Object.assign(document.createElement('span'), {
+                            className: 'domain-highlight',
+                            textContent: highlightPart
+                        }),
+                        document.createTextNode(suffix)
                     );
                 }
                 if (link.parentNode === sourceElement) {
@@ -423,7 +442,7 @@ class ArticleRenderer {
     }
     isValidUrl(url) {
         if (!url) return false;
-        return url.match(/^(https?|ftp):\/\//) !== null;
+        return /^https?:\/\//i.test(url);
     }
 
     initPromptViewer() {
@@ -433,16 +452,16 @@ class ArticleRenderer {
             overlay.id = 'prompt-modal-overlay';
             overlay.className = 'prompt-modal-overlay';
             overlay.innerHTML = `
-              <div class="prompt-modal" role="dialog" aria-modal="true" aria-label="Prompt Viewer">
+                <div class="prompt-modal" role="dialog" aria-modal="true" aria-labelledby="prompt-modal-title" tabindex="-1">
                 <div class="prompt-modal-header">
                   <div class="prompt-modal-title" id="prompt-modal-title">Prompt</div>
                   <div class="prompt-modal-actions">
-                    <button class="prompt-modal-btn" id="prompt-copy-btn" type="button">Copy</button>
-                    <button class="prompt-modal-btn" id="prompt-close-btn" type="button">Close</button>
+                    <button class="prompt-modal-btn" id="prompt-copy-btn" type="button" aria-label="复制 Prompt">Copy</button>
+                    <button class="prompt-modal-btn" id="prompt-close-btn" type="button" aria-label="关闭 Prompt 弹窗">Close</button>
                   </div>
                 </div>
                 <div class="prompt-modal-body" id="prompt-modal-body">
-                  <div class="prompt-hint">Loading...</div>
+                  <div class="prompt-hint" role="status">Loading...</div>
                 </div>
               </div>
             `;
@@ -458,7 +477,32 @@ class ArticleRenderer {
 
             // ESC 关闭
             document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape') this.closePromptModal();
+                const activeOverlay = document.getElementById('prompt-modal-overlay');
+                if (!activeOverlay || activeOverlay.style.display !== 'flex') return;
+                if (e.key === 'Escape') {
+                    this.closePromptModal();
+                    return;
+                }
+                if (e.key !== 'Tab') return;
+                const modal = activeOverlay.querySelector('.prompt-modal');
+                if (!modal) return;
+                const focusable = Array.from(modal.querySelectorAll(
+                    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+                )).filter(el => el.offsetParent !== null);
+                if (!focusable.length) {
+                    e.preventDefault();
+                    modal.focus();
+                    return;
+                }
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (e.shiftKey && document.activeElement === first) {
+                    e.preventDefault();
+                    last.focus();
+                } else if (!e.shiftKey && document.activeElement === last) {
+                    e.preventDefault();
+                    first.focus();
+                }
             });
 
             // copy 按钮
@@ -486,6 +530,7 @@ class ArticleRenderer {
             const version = btn.dataset.promptVersion;
             if (!version) return;
 
+            this.promptLastFocus = btn;
             this.openPromptModal(version);
         });
     }
@@ -500,6 +545,7 @@ class ArticleRenderer {
         bodyEl.innerHTML = `<div class="prompt-hint">Loading prompt v${this.escapeHTML(promptVersion)}...</div>`;
         overlay.style.display = 'flex';
         overlay.dataset.promptText = '';
+        overlay.querySelector('.prompt-modal')?.focus();
 
         try {
             const promptText = await this.fetchPromptByVersion(promptVersion);
@@ -549,6 +595,10 @@ class ArticleRenderer {
         if (!overlay) return;
         overlay.style.display = 'none';
         overlay.dataset.promptText = '';
+        if (this.promptLastFocus && typeof this.promptLastFocus.focus === 'function') {
+            this.promptLastFocus.focus();
+        }
+        this.promptLastFocus = null;
     }
 
     fallbackCopyText(text) {

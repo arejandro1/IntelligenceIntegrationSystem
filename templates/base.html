@@ -1,0 +1,124 @@
+{% set is_logged_in = session.get('logged_in') is true %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>{% block title %}IIS 情报中心{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/intelligence_table.css">
+    {% block head %}{% endblock %}
+</head>
+
+<body class="iis-app-body {% block body_class %}{% endblock %}" {% block body_attrs %}{% endblock %}>
+    <script>window.IS_AUTHENTICATED = {{ is_logged_in | tojson }};</script>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('index') }}">📡 IIS 情报中心</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+                aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="mainNav">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link {% block nav_list %}{% endblock %}"
+                            href="{{ url_for('intelligences_view') }}">
+                            <i class="bi bi-list-ul"></i> 情报列表
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% block nav_search %}{% endblock %}"
+                            href="{{ url_for('intelligences_search_page') }}">
+                            <i class="bi bi-search"></i> 搜索
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% block nav_clusters %}{% endblock %}"
+                            href="{{ url_for('intelligences_clusters_view') }}">
+                            <i class="bi bi-diagram-3"></i> 情报聚类
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% block nav_entity %}{% endblock %}"
+                            href="{{ url_for('entity_frequency_page') }}">
+                            <i class="bi bi-pie-chart"></i> 实体频率
+                        </a>
+                    </li>
+                    {% if is_logged_in %}
+                    <li class="nav-item">
+                        <a class="nav-link {% block nav_graph %}{% endblock %}"
+                            href="{{ url_for('intelligence_graph_page') }}">
+                            <i class="bi bi-graph-up"></i> 态势推演
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% block nav_dashboard %}{% endblock %}"
+                            href="{{ url_for('intelligence_dashboard_page') }}">
+                            <i class="bi bi-speedometer2"></i> 仪表盘
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% block nav_monitor %}{% endblock %}" href="/monitor/api/dashboard">
+                            <i class="bi bi-activity"></i> 系统监控
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% block nav_export %}{% endblock %}"
+                            href="{{ url_for('export_mongodb_page') }}">
+                            <i class="bi bi-download"></i> 导出
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+                <ul class="navbar-nav">
+                    {% if is_logged_in %}
+                    <li class="nav-item d-flex align-items-center">
+                        <span class="navbar-text small me-2">
+                            <i class="bi bi-person-circle"></i> {{ session.get('username', '用户') }}
+                        </span>
+                    </li>
+                    <li class="nav-item">
+                        <form action="{{ url_for('logout') }}" method="POST" class="d-inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button class="nav-link btn btn-link" type="submit">
+                                <i class="bi bi-box-arrow-right"></i> 退出
+                            </button>
+                        </form>
+                    </li>
+                    {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('login') }}">
+                            <i class="bi bi-box-arrow-in-right"></i> 登录
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container py-2">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="container py-3 text-center text-muted small border-top">
+        © <span id="footer-year"></span> Intelligence Integration System
+    </footer>
+    <script>
+        // 页脚年份由前端注入，避免后端每个路由都需传 now 变量
+        (function () {
+            const el = document.getElementById('footer-year');
+            if (el && !el.textContent) el.textContent = new Date().getFullYear();
+        })();
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>

@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
         search_mode: 'mongo',
         payload_cache: {}
     };
+    let initialSearchPage = 1;
 
     // --- 公开模式限制：读取后端注入的限制并调整 UI ---
     const publicMode = JSON.parse(document.body.dataset.publicMode || 'false');
@@ -104,23 +105,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 2. 数据源列表 ---
     const MEDIA_SOURCES = [
-        { domain: 'aa.com.tr',      name: '阿纳多卢通讯社',       flag: '🇹🇷' },
-        { domain: 'abc.net.au',     name: '澳大利亚广播公司',     flag: '🇦🇺' },
-        { domain: 'aljazeera.com',  name: '半岛电视台',           flag: '🇶🇦' },
-        { domain: 'bbc.com',        name: '英国广播公司',         flag: '🇬🇧' },
-        { domain: 'cbc.ca',         name: '加拿大广播公司',       flag: '🇨🇦' },
-        { domain: 'chinanews.com',  name: '中国新闻网',           flag: '🇨🇳' },
-        { domain: 'dw.com',         name: '德国之声',             flag: '🇩🇪' },
-        { domain: 'elpais.com',     name: '国家报',               flag: '🇪🇸' },
-        { domain: 'france24.com',   name: '法国24台',             flag: '🇫🇷' },
-        { domain: 'investing.com',  name: '英为财情',             flag: '🌍' },
-        { domain: 'news.cn',        name: '新华网',               flag: '🇨🇳' },
-        { domain: 'nhk.or.jp',      name: '日本广播协会',         flag: '🇯🇵' },
-        { domain: 'ntv.com.tr',     name: '土耳其NTV',            flag: '🇹🇷' },
-        { domain: 'rfi.fr',         name: '法国国际广播电台',     flag: '🇫🇷' },
-        { domain: 'tass.com',       name: '塔斯社',               flag: '🇷🇺' },
-        { domain: 'voanews.com',    name: '美国之音',             flag: '🇺🇸' },
-        { domain: 'yna.co.kr',      name: '韩联社',               flag: '🇰🇷' },
+        { domain: 'aa.com.tr', name: '阿纳多卢通讯社', flag: '🇹🇷' },
+        { domain: 'abc.net.au', name: '澳大利亚广播公司', flag: '🇦🇺' },
+        { domain: 'aljazeera.com', name: '半岛电视台', flag: '🇶🇦' },
+        { domain: 'bbc.com', name: '英国广播公司', flag: '🇬🇧' },
+        { domain: 'cbc.ca', name: '加拿大广播公司', flag: '🇨🇦' },
+        { domain: 'chinanews.com', name: '中国新闻网', flag: '🇨🇳' },
+        { domain: 'dw.com', name: '德国之声', flag: '🇩🇪' },
+        { domain: 'elpais.com', name: '国家报', flag: '🇪🇸' },
+        { domain: 'france24.com', name: '法国24台', flag: '🇫🇷' },
+        { domain: 'investing.com', name: '英为财情', flag: '🌍' },
+        { domain: 'news.cn', name: '新华网', flag: '🇨🇳' },
+        { domain: 'nhk.or.jp', name: '日本广播协会', flag: '🇯🇵' },
+        { domain: 'ntv.com.tr', name: '土耳其NTV', flag: '🇹🇷' },
+        { domain: 'rfi.fr', name: '法国国际广播电台', flag: '🇫🇷' },
+        { domain: 'tass.com', name: '塔斯社', flag: '🇷🇺' },
+        { domain: 'voanews.com', name: '美国之音', flag: '🇺🇸' },
+        { domain: 'yna.co.kr', name: '韩联社', flag: '🇰🇷' },
     ];
 
     let selectedDomainsMongo = new Set();
@@ -135,17 +136,67 @@ document.addEventListener('DOMContentLoaded', () => {
             tag.className = 'source-tag';
             tag.dataset.domain = item.domain;
             tag.title = item.domain;
+            tag.setAttribute('role', 'button');
+            tag.setAttribute('tabindex', '0');
+            tag.setAttribute('aria-pressed', String(selectedSet.has(item.domain)));
             tag.innerHTML = `<span>${item.flag}</span><span>${item.name}</span><span class="check-icon">✓</span>`;
-            tag.addEventListener('click', () => {
+            const toggleTag = () => {
                 tag.classList.toggle('selected');
-                if (tag.classList.contains('selected')) selectedSet.add(item.domain);
+                const selected = tag.classList.contains('selected');
+                if (selected) selectedSet.add(item.domain);
                 else selectedSet.delete(item.domain);
+                tag.setAttribute('aria-pressed', String(selected));
+            };
+            tag.addEventListener('click', toggleTag);
+            tag.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    toggleTag();
+                }
             });
             container.appendChild(tag);
         });
     }
     renderSourceTags('source-domains-container', selectedDomainsMongo);
     renderSourceTags('source-domains-container-vector', selectedDomainsVector);
+
+    // P-review 修复：来源列表改为通过 /api/sources 动态加载（后端 5 分钟缓存）。
+    // 硬编码 MEDIA_SOURCES 仅作回退与中文名/旗帜元数据映射：
+    // 已知域名沿用本地元数据展示；新域名以域名本身显示。
+    // 加载失败时静默保留硬编码回退列表；重渲染按 selectedSet 恢复选中状态，
+    // 不丢失用户已勾选或 URL 注入的来源。
+    async function loadSourcesFromApi() {
+        try {
+            const resp = await fetch('/api/sources');
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const domains = Array.isArray(data && data.domains) ? data.domains : [];
+            if (!domains.length) return;
+            const meta = new Map(MEDIA_SOURCES.map(s => [s.domain.toLowerCase(), s]));
+            const merged = [];
+            const seen = new Set();
+            domains.forEach(item => {
+                const domain = String(item && item.domain || '').trim().toLowerCase();
+                if (!domain || seen.has(domain)) return;
+                seen.add(domain);
+                const known = meta.get(domain);
+                merged.push({
+                    domain: domain,
+                    name: known ? known.name : domain,
+                    flag: known ? known.flag : '🌐'
+                });
+            });
+            if (merged.length) {
+                MEDIA_SOURCES.length = 0;
+                MEDIA_SOURCES.push(...merged);
+                renderSourceTags('source-domains-container', selectedDomainsMongo);
+                renderSourceTags('source-domains-container-vector', selectedDomainsVector);
+            }
+        } catch (e) {
+            console.warn('加载 /api/sources 失败，使用内置来源列表。', e);
+        }
+    }
+    loadSourcesFromApi();
 
     // --- 3. 双滑块组件 ---
     function initRangeSlider(containerId, onChange) {
@@ -171,6 +222,25 @@ document.addEventListener('DOMContentLoaded', () => {
         thumbHigh.className = 'range-thumb';
         container.appendChild(thumbHigh);
 
+        container.setAttribute('aria-label', '范围选择');
+        thumbLow.setAttribute('role', 'slider');
+        thumbHigh.setAttribute('role', 'slider');
+        thumbLow.setAttribute('tabindex', '0');
+        thumbHigh.setAttribute('tabindex', '0');
+        thumbLow.setAttribute('aria-label', '最低值');
+        thumbHigh.setAttribute('aria-label', '最高值');
+        thumbLow.setAttribute('aria-valuemin', String(minVal));
+        thumbLow.setAttribute('aria-valuemax', String(maxVal));
+        thumbHigh.setAttribute('aria-valuemin', String(minVal));
+        thumbHigh.setAttribute('aria-valuemax', String(maxVal));
+
+        const clampValue = value => {
+            const numericValue = Number(value);
+            if (!Number.isFinite(numericValue)) return minVal;
+            const stepped = Math.round(numericValue / step) * step;
+            return Math.max(minVal, Math.min(maxVal, parseFloat(stepped.toFixed(decimal))));
+        };
+
         function updateUI() {
             const lowPct = (low - minVal) / (maxVal - minVal) * 100;
             const highPct = (high - minVal) / (maxVal - minVal) * 100;
@@ -178,6 +248,10 @@ document.addEventListener('DOMContentLoaded', () => {
             thumbHigh.style.left = highPct + '%';
             fill.style.left = lowPct + '%';
             fill.style.width = (highPct - lowPct) + '%';
+            thumbLow.setAttribute('aria-valuenow', String(low));
+            thumbLow.setAttribute('aria-valuetext', String(low));
+            thumbHigh.setAttribute('aria-valuenow', String(high));
+            thumbHigh.setAttribute('aria-valuetext', String(high));
             if (onChange) onChange(low, high);
         }
 
@@ -230,6 +304,33 @@ document.addEventListener('DOMContentLoaded', () => {
         thumbLow.addEventListener('touchstart', e => onPointerDown(e, thumbLow), { passive: false });
         thumbHigh.addEventListener('touchstart', e => onPointerDown(e, thumbHigh), { passive: false });
 
+        function onKeyDown(event, thumb) {
+            let nextValue;
+            if (event.key === 'Home') {
+                nextValue = minVal;
+            } else if (event.key === 'End') {
+                nextValue = maxVal;
+            } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
+                nextValue = (thumb === thumbLow ? low : high) - step;
+            } else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+                nextValue = (thumb === thumbLow ? low : high) + step;
+            } else {
+                return;
+            }
+
+            event.preventDefault();
+            nextValue = clampValue(nextValue);
+            if (thumb === thumbLow) {
+                low = Math.min(nextValue, parseFloat((high - step).toFixed(decimal)));
+            } else {
+                high = Math.max(nextValue, parseFloat((low + step).toFixed(decimal)));
+            }
+            updateUI();
+        }
+
+        thumbLow.addEventListener('keydown', event => onKeyDown(event, thumbLow));
+        thumbHigh.addEventListener('keydown', event => onKeyDown(event, thumbHigh));
+
         container.addEventListener('click', e => {
             if (e.target.classList.contains('range-thumb')) return;
             const val = getValueFromEvent(e);
@@ -244,7 +345,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         updateUI();
-        return { setValues: (l, h) => { low = l; high = h; updateUI(); } };
+        return {
+            setValues: (l, h) => {
+                low = clampValue(l);
+                high = clampValue(h);
+                if (low > high - step) low = parseFloat((high - step).toFixed(decimal));
+                if (high < low + step) high = parseFloat((low + step).toFixed(decimal));
+                low = Math.max(minVal, low);
+                high = Math.min(maxVal, high);
+                updateUI();
+            }
+        };
     }
 
     const sliderMongo = initRangeSlider('slider-mongo', (low, high) => {
@@ -262,6 +373,35 @@ document.addEventListener('DOMContentLoaded', () => {
     applyPublicModeLimits();
 
     // --- 4. 日期选择器 ---
+    // P2 批次 A2 修复：采集的是浏览器本地时间，标签按本地时区动态显示，
+    // 提交前把本地 naive 时间转换为带偏移的 ISO 8601 字符串（与后端
+    // _parse_query_datetime 的 aware 解析对齐），避免时区漂移。
+    function pad2(n) {
+        return String(n).padStart(2, '0');
+    }
+
+    function browserTimezoneOffsetSuffix() {
+        const offsetMinutes = -new Date().getTimezoneOffset();
+        const sign = offsetMinutes >= 0 ? '+' : '-';
+        const absMinutes = Math.abs(offsetMinutes);
+        return `${sign}${pad2(Math.floor(absMinutes / 60))}:${pad2(absMinutes % 60)}`;
+    }
+
+    function toOffsetIso(s) {
+        if (!s) return s;
+        if (s.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(s)) return s;
+        return s.replace(' ', 'T') + browserTimezoneOffsetSuffix();
+    }
+
+    // 将本地时区名填入时间标签，如 GMT+08:00
+    function fillTimezoneLabels() {
+        const suffix = browserTimezoneOffsetSuffix();
+        document.querySelectorAll('.tz-suffix-label').forEach(el => {
+            el.textContent = `(GMT${suffix})`;
+        });
+    }
+    fillTimezoneLabels();
+
     function initFlatpickr(inputId, startHiddenId, endHiddenId) {
         const input = document.getElementById(inputId);
         const startHidden = document.getElementById(startHiddenId);
@@ -273,7 +413,7 @@ document.addEventListener('DOMContentLoaded', () => {
             dateFormat: "Y-m-d H:i",
             time_24hr: true,
             allowInput: true,
-            onChange: function(selectedDates) {
+            onChange: function (selectedDates) {
                 if (selectedDates.length >= 2) {
                     startHidden.value = flatpickr.formatDate(selectedDates[0], "Y-m-d H:i") + ':00';
                     endHidden.value = flatpickr.formatDate(selectedDates[1], "Y-m-d H:i") + ':00';
@@ -338,11 +478,16 @@ document.addEventListener('DOMContentLoaded', () => {
         spinner.classList.remove('d-none');
         resultsWrapper.style.display = 'block';
         renderer.showLoading();
+        resultsCountEl.textContent = '—';
+        resultsTotalEl.textContent = '—';
 
         try {
             const response = await fetch('/intelligences/query', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                },
                 body: JSON.stringify(payload),
             });
 
@@ -374,6 +519,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function syncSearchUrl(payload) {
+        const params = new URLSearchParams();
+        params.set('mode', payload.search_mode === 'vector_text' ? 'vector' : 'mongo');
+        params.set('auto_search', '1');
+        Object.entries(payload).forEach(([key, value]) => {
+            if (key === 'search_mode' || value === undefined || value === null || value === '') return;
+            if (key === 'page' && Number(value) <= 1) return;
+            if (typeof value === 'boolean') {
+                params.set(key, value ? '1' : '0');
+                return;
+            }
+            params.set(key, String(value));
+        });
+        history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+    }
+
     // --- 6. 表单提交 ---
     searchForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -383,7 +544,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const searchMode = rawMode === 'vector' ? 'vector_text' : 'mongo';
 
         const payload = {
-            page: 1,
+            page: initialSearchPage,
             per_page: 10,
             search_mode: searchMode,
             keywords: ''
@@ -400,14 +561,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!publicMode) {
                 const st = document.getElementById('start-time-vector').value;
                 const et = document.getElementById('end-time-vector').value;
-                if (st) payload.start_time = st;
-                if (et) payload.end_time = et;
+                if (st) payload.start_time = toOffsetIso(st);
+                if (et) payload.end_time = toOffsetIso(et);
             }
 
             const ast = document.getElementById('archive-start-time-vector').value;
             const aet = document.getElementById('archive-end-time-vector').value;
-            if (ast) payload.archive_start_time = ast;
-            if (aet) payload.archive_end_time = aet;
+            if (ast) payload.archive_start_time = toOffsetIso(ast);
+            if (aet) payload.archive_end_time = toOffsetIso(aet);
 
             const scoreMin = document.getElementById('score-threshold-min-vector').value;
             const scoreMax = document.getElementById('score-threshold-max-vector').value;
@@ -433,14 +594,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!publicMode) {
                 const st = document.getElementById('start-time-mongo').value;
                 const et = document.getElementById('end-time-mongo').value;
-                if (st) payload.start_time = st;
-                if (et) payload.end_time = et;
+                if (st) payload.start_time = toOffsetIso(st);
+                if (et) payload.end_time = toOffsetIso(et);
             }
 
             const ast = document.getElementById('archive-start-time-mongo').value;
             const aet = document.getElementById('archive-end-time-mongo').value;
-            if (ast) payload.archive_start_time = ast;
-            if (aet) payload.archive_end_time = aet;
+            if (ast) payload.archive_start_time = toOffsetIso(ast);
+            if (aet) payload.archive_end_time = toOffsetIso(aet);
 
             const thMin = document.getElementById('threshold-min-mongo').value;
             const thMax = document.getElementById('threshold-max-mongo').value;
@@ -462,8 +623,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         currentQueryState.payload_cache = payload;
-        currentQueryState.page = 1;
+        currentQueryState.page = payload.page;
         currentQueryState.search_mode = searchMode;
+        initialSearchPage = 1;
+        syncSearchUrl(payload);
 
         fetchResults(payload);
     });
@@ -478,6 +641,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const nextPayload = { ...currentQueryState.payload_cache };
                 nextPayload.page = clickPage;
                 currentQueryState.page = clickPage;
+                syncSearchUrl(nextPayload);
                 fetchResults(nextPayload);
             }
         }
@@ -490,6 +654,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const mode = urlParams.get('mode') || 'mongo';
         const isVector = mode === 'vector';
+        const requestedPage = Number.parseInt(urlParams.get('page') || '1', 10);
+        initialSearchPage = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+        currentQueryState.page = initialSearchPage;
 
         // 切换 Tab
         if (isVector) {
@@ -510,6 +677,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 const el = document.querySelector('#mongo-pane input[name="keywords"]');
                 if (el) el.value = kw;
             }
+        }
+
+        const perPage = urlParams.get('per_page');
+        if (perPage) {
+            const select = document.querySelector(`#${isVector ? 'vector' : 'mongo'}-pane select[name="per_page"]`);
+            if (select && Array.from(select.options).some(option => option.value === perPage)) {
+                select.value = perPage;
+            }
+        }
+
+        if (isVector) {
+            const summary = urlParams.get('in_summary');
+            const fulltext = urlParams.get('in_fulltext');
+            const summaryEl = document.getElementById('in_summary');
+            const fulltextEl = document.getElementById('in_fulltext');
+            if (summary !== null && summaryEl) summaryEl.checked = summary === '1' || summary === 'true';
+            if (fulltext !== null && fulltextEl) fulltextEl.checked = fulltext === '1' || fulltext === 'true';
         }
 
         // 填充实体字段
@@ -605,9 +789,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const container = document.getElementById(containerId);
             if (container) {
                 domainList.forEach(domain => {
-                    const tag = container.querySelector(`.source-tag[data-domain="${domain}"]`);
+                    const tag = Array.from(container.querySelectorAll('.source-tag'))
+                        .find(candidate => candidate.dataset.domain === domain);
                     if (tag) {
                         tag.classList.add('selected');
+                        tag.setAttribute('aria-pressed', 'true');
                         selectedSet.add(domain);
                     }
                 });

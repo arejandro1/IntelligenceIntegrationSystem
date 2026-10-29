@@ -1,204 +1,268 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MongoDB Data Exporter</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .preset-btn { margin: 2px; font-size: 0.85rem; }
-        #weekPresets { display: flex; flex-wrap: wrap; justify-content: space-between; }
+{% extends "base.html" %}
+
+{% block title %}MongoDB 数据导出 - IIS 情报中心{% endblock %}
+
+{% block nav_export %}active{% endblock %}
+
+{% block head %}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+<style>
+    .preset-btn {
+        margin: 2px;
+        font-size: 0.85rem;
+    }
+
+    #weekPresets {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+    }
+
+    #weekPresets .preset-btn {
+        flex: 0 0 calc(25% - 10px);
+        min-width: 120px;
+        margin-bottom: 8px;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    @media (max-width: 768px) {
         #weekPresets .preset-btn {
-            flex: 0 0 calc(25% - 10px); min-width: 120px; margin-bottom: 8px;
-            text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            flex: 0 0 calc(50% - 10px);
         }
-        @media (max-width: 768px) { #weekPresets .preset-btn { flex: 0 0 calc(50% - 10px); } }
-        @media (max-width: 576px) { #weekPresets .preset-btn { flex: 0 0 100%; } }
-        .file-list-group-item { display: flex; justify-content: space-between; align-items: center; }
-        /* Style for the mode switch tabs */
-        .nav-pills .nav-link { cursor: pointer; }
-    </style>
-</head>
-<body>
-    <div class="container mt-4 mb-5">
-        <h1 class="text-center mb-4"><i class="fas fa-database me-2"></i>MongoDB Data Exporter</h1>
+    }
 
-        <div class="row">
-            <div class="col-md-8 mx-auto">
-                <div class="card shadow-sm">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0"><i class="fas fa-file-export me-2"></i>Export Configuration</h5>
+    @media (max-width: 576px) {
+        #weekPresets .preset-btn {
+            flex: 0 0 100%;
+        }
+    }
+
+    .file-list-group-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    /* Style for the mode switch tabs */
+    .nav-pills .nav-link {
+        cursor: pointer;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+    <h1 class="text-center mb-4"><i class="fas fa-database me-2"></i>MongoDB Data Exporter</h1>
+
+    <div class="row">
+        <div class="col-md-8 mx-auto">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="fas fa-file-export me-2"></i>Export Configuration</h5>
+                </div>
+                <div class="card-body">
+
+                    <!-- 1. Target Selection -->
+                    <div class="mb-4">
+                        <label for="exportTarget" class="form-label fw-bold">Target Database</label>
+                        <select class="form-select" id="exportTarget">
+                            <option value="archive" selected>Intelligence Archive (Default)</option>
+                            <option value="cache">Intelligence Cache</option>
+                            <option value="all">Export Both (Archive & Cache)</option>
+                        </select>
                     </div>
-                    <div class="card-body">
 
-                        <!-- 1. Target Selection -->
-                        <div class="mb-4">
-                            <label for="exportTarget" class="form-label fw-bold">Target Database</label>
-                            <select class="form-select" id="exportTarget">
-                                <option value="archive" selected>Intelligence Archive (Default)</option>
-                                <option value="cache">Intelligence Cache</option>
-                                <option value="all">Export Both (Archive & Cache)</option>
-                            </select>
-                        </div>
+                    <hr>
 
-                        <hr>
+                    <!-- 2. Mode Selection (Tabs) -->
+                    <label class="form-label fw-bold mb-2">Export Mode</label>
+                    <ul class="nav nav-pills nav-fill mb-4" id="modeTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link active" id="tab-range" href="#" role="tab" aria-selected="true"
+                                onclick="switchMode('range'); return false;">
+                                <i class="fas fa-calendar-alt me-2"></i>Time Range
+                            </a>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link" id="tab-all" href="#" role="tab" aria-selected="false"
+                                onclick="switchMode('all'); return false;">
+                                <i class="fas fa-globe me-2"></i>Export All Data
+                            </a>
+                        </li>
+                    </ul>
 
-                        <!-- 2. Mode Selection (Tabs) -->
-                        <label class="form-label fw-bold mb-2">Export Mode</label>
-                        <ul class="nav nav-pills nav-fill mb-4" id="modeTabs">
-                            <li class="nav-item">
-                                <a class="nav-link active" id="tab-range" onclick="switchMode('range')">
-                                    <i class="fas fa-calendar-alt me-2"></i>Time Range
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" id="tab-all" onclick="switchMode('all')">
-                                    <i class="fas fa-globe me-2"></i>Export All Data
-                                </a>
-                            </li>
-                        </ul>
+                    <!-- 3. Dynamic Configuration Area -->
 
-                        <!-- 3. Dynamic Configuration Area -->
-
-                        <!-- A. Time Range Configuration -->
-                        <div id="config-range">
-                            <h5 class="text-secondary"><i class="fas fa-clock me-2"></i>Select Period</h5>
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <label for="startDate" class="form-label">Start Date</label>
-                                    <input type="datetime-local" class="form-control" id="startDate">
-                                </div>
-                                <div class="col-md-6">
-                                    <label for="endDate" class="form-label">End Date</label>
-                                    <input type="datetime-local" class="form-control" id="endDate">
-                                </div>
+                    <!-- A. Time Range Configuration -->
+                    <div id="config-range">
+                        <h5 class="text-secondary"><i class="fas fa-clock me-2"></i>Select Period</h5>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="startDate" class="form-label">Start Date</label>
+                                <input type="datetime-local" class="form-control" id="startDate">
                             </div>
-
-                            <!-- Presets -->
-                            <div class="mb-3">
-                                <h6 class="text-muted small text-uppercase">Presets</h6>
-                                <button class="btn btn-sm btn-outline-secondary me-2" onclick="togglePresets('month')">Show Months</button>
-                                <button class="btn btn-sm btn-outline-secondary" onclick="togglePresets('week')">Show Weeks</button>
-                            </div>
-
-                            <div id="monthPresetsContainer" class="d-none mb-3">
-                                <div class="date-presets" id="monthPresets"></div>
-                            </div>
-                            <div id="weekPresetsContainer" class="d-none mb-3">
-                                <div class="date-presets" id="weekPresets"></div>
+                            <div class="col-md-6">
+                                <label for="endDate" class="form-label">End Date</label>
+                                <input type="datetime-local" class="form-control" id="endDate">
                             </div>
                         </div>
 
-                        <!-- B. Export All Configuration -->
-                        <div id="config-all" class="d-none">
-                            <div class="alert alert-info">
-                                <i class="fas fa-info-circle me-2"></i>
-                                This will export <strong>all data</strong> from the beginning of time.
-                                <br>To prevent generating one massive file, please select a split strategy.
-                            </div>
-
-                            <label for="splitBy" class="form-label fw-bold">Split Files By</label>
-                            <select class="form-select" id="splitBy">
-                                <option value="month" selected>Monthly (Recommended)</option>
-                                <option value="week">Weekly</option>
-                                <option value="year">Yearly</option>
-                                <option value="none">No Split (Single Huge File)</option>
-                            </select>
+                        <!-- Presets -->
+                        <div class="mb-3">
+                            <h6 class="text-muted small text-uppercase">Presets</h6>
+                            <button class="btn btn-sm btn-outline-secondary me-2" onclick="togglePresets('month')">Show
+                                Months</button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="togglePresets('week')">Show
+                                Weeks</button>
                         </div>
 
-                        <hr class="mt-4">
-
-                        <!-- 4. Action Buttons -->
-                        <div class="row mt-3">
-                            <div class="col">
-                                <button id="exportBtn" class="btn btn-primary w-100 py-2">
-                                    <span id="btnSpinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-                                    <span id="btnText"><i class="fas fa-download me-2"></i>Start Export</span>
-                                </button>
-                            </div>
+                        <div id="monthPresetsContainer" class="d-none mb-3">
+                            <div class="date-presets" id="monthPresets"></div>
+                        </div>
+                        <div id="weekPresetsContainer" class="d-none mb-3">
+                            <div class="date-presets" id="weekPresets"></div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Progress & Results (Same as before) -->
-                <div class="progress mt-3 d-none" id="progressContainer" style="height: 25px;">
-                    <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-info" role="progressbar" style="width: 0%">Processing...</div>
+                    <!-- B. Export All Configuration -->
+                    <div id="config-all" class="d-none">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            This will export <strong>all data</strong> from the beginning of time.
+                            <br>To prevent generating one massive file, please select a split strategy.
+                        </div>
+
+                        <label for="splitBy" class="form-label fw-bold">Split Files By</label>
+                        <select class="form-select" id="splitBy">
+                            <option value="month" selected>Monthly (Recommended)</option>
+                            <option value="week">Weekly</option>
+                            <option value="year">Yearly</option>
+                            <option value="none">No Split (Single Huge File)</option>
+                        </select>
+                    </div>
+
+                    <hr class="mt-4">
+
+                    <!-- 4. Action Buttons -->
+                    <div class="row mt-3">
+                        <div class="col">
+                            <button id="exportBtn" class="btn btn-primary w-100 py-2">
+                                <span id="btnSpinner" class="spinner-border spinner-border-sm d-none" role="status"
+                                    aria-hidden="true"></span>
+                                <span id="btnText"><i class="fas fa-download me-2"></i>Start Export</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <div id="resultAlert" class="alert d-none mt-3">
-                    <i class="fas fa-info-circle me-2"></i><span id="resultMessage"></span>
+            </div>
+
+            <!-- Progress & Results -->
+            <div class="progress mt-3 d-none" id="progressContainer" style="height: 25px;">
+                <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-info"
+                    role="progressbar" style="width: 0%">Processing...</div>
+            </div>
+            <div id="resultAlert" class="alert d-none mt-3">
+                <i class="fas fa-info-circle me-2"></i><span id="resultMessage"></span>
+            </div>
+            <div id="downloadSection" class="card mt-3 d-none border-success">
+                <div class="card-header bg-success text-white"><i class="fas fa-check-circle me-2"></i>Export Ready
                 </div>
-                <div id="downloadSection" class="card mt-3 d-none border-success">
-                    <div class="card-header bg-success text-white"><i class="fas fa-check-circle me-2"></i>Export Ready</div>
-                    <ul class="list-group list-group-flush" id="fileList"></ul>
-                </div>
+                <ul class="list-group list-group-flush" id="fileList"></ul>
             </div>
         </div>
     </div>
+</div>
+{% endblock %}
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        let currentMode = 'range';
+{% block scripts %}
+<script>
+    let currentMode = 'range';
 
-        document.addEventListener('DOMContentLoaded', function() {
-            initDateInputs();
-            generateMonthPresets();
-            generateWeekPresets();
-            document.getElementById('exportBtn').addEventListener('click', startExport);
-        });
+    // 转义动态文本，防止文件名注入 HTML
+    function escapeHtml(value) {
+        if (value === null || value === undefined) return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        };
+        return String(value).replace(/[&<>"']/g, function (ch) { return map[ch]; });
+    }
 
-        function initDateInputs() {
-            const now = new Date();
-            const oneHourAgo = new Date(now.getTime() - (3600 * 1000));
-            document.getElementById('startDate').value = formatLocalISO(oneHourAgo);
-            document.getElementById('endDate').value = formatLocalISO(now);
-        }
+    document.addEventListener('DOMContentLoaded', function () {
+        initDateInputs();
+        generateMonthPresets();
+        generateWeekPresets();
+        document.getElementById('exportBtn').addEventListener('click', startExport);
+    });
 
-        function switchMode(mode) {
-            currentMode = mode;
-            // Toggle Tabs UI
-            document.getElementById('tab-range').classList.toggle('active', mode === 'range');
-            document.getElementById('tab-all').classList.toggle('active', mode === 'all');
+    function initDateInputs() {
+        const now = new Date();
+        const oneHourAgo = new Date(now.getTime() - (3600 * 1000));
+        document.getElementById('startDate').value = formatLocalISO(oneHourAgo);
+        document.getElementById('endDate').value = formatLocalISO(now);
+    }
 
-            // Toggle Config Areas
-            document.getElementById('config-range').classList.toggle('d-none', mode !== 'range');
-            document.getElementById('config-all').classList.toggle('d-none', mode !== 'all');
-        }
+    function switchMode(mode) {
+        currentMode = mode;
+        // Toggle Tabs UI
+        document.getElementById('tab-range').classList.toggle('active', mode === 'range');
+        document.getElementById('tab-all').classList.toggle('active', mode === 'all');
+        document.getElementById('tab-range').setAttribute('aria-selected', mode === 'range');
+        document.getElementById('tab-all').setAttribute('aria-selected', mode === 'all');
 
-        function togglePresets(type) {
-            const container = document.getElementById(type + 'PresetsContainer');
-            container.classList.toggle('d-none');
-        }
+        // Toggle Config Areas
+        document.getElementById('config-range').classList.toggle('d-none', mode !== 'range');
+        document.getElementById('config-all').classList.toggle('d-none', mode !== 'all');
+    }
 
-        function formatLocalISO(date) {
-            const pad = n => String(n).padStart(2, '0');
-            return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-        }
+    function togglePresets(type) {
+        const container = document.getElementById(type + 'PresetsContainer');
+        container.classList.toggle('d-none');
+    }
 
-        function startExport() {
-            const target = document.getElementById('exportTarget').value;
-            const payload = { target: target, mode: currentMode };
+    function formatLocalISO(date) {
+        const pad = n => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
 
-            if (currentMode === 'range') {
-                const s = document.getElementById('startDate').value;
-                const e = document.getElementById('endDate').value;
-                if (!s || !e) return showResult('Please select start and end dates.', 'danger');
-                payload.startDate = s.length === 16 ? s + ':00' : s;
-                payload.endDate = e.length === 16 ? e + ':00' : e;
-            } else {
-                // Export All Mode
-                payload.splitBy = document.getElementById('splitBy').value;
+    function startExport() {
+        const target = document.getElementById('exportTarget').value;
+        const payload = { target: target, mode: currentMode };
+
+        if (currentMode === 'range') {
+            const s = document.getElementById('startDate').value;
+            const e = document.getElementById('endDate').value;
+            if (!s || !e) return showResult('Please select start and end dates.', 'danger');
+            payload.startDate = s.length === 16 ? s + ':00' : s;
+            payload.endDate = e.length === 16 ? e + ':00' : e;
+        } else {
+            // Export All Mode（重操作，二次确认）
+            if (!window.confirm('确认导出全部数据？该操作可能生成大量文件并占用磁盘空间。')) {
+                return;
             }
+            payload.splitBy = document.getElementById('splitBy').value;
+        }
 
-            resetUI();
-            setLoading(true);
+        resetUI();
+        setLoading(true);
 
-            fetch('/maintenance/export_mongodb', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(payload)
-            })
-            .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message) }))
+        // 后端为同步一次性导出（无进度轮询端点），进度条只能显示
+        // "正在进行"的不确定状态，不伪造百分比。
+        fetch('/maintenance/export_mongodb', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''
+            },
+            body: JSON.stringify(payload)
+        })
+            .then(res => res.ok ? res.json() : res.json().then(e => { throw new Error(e.message || 'Export failed') }))
             .then(data => {
                 if (data.status === 'success' || data.status === 'warning') {
                     updateProgress(100);
@@ -210,83 +274,109 @@
             })
             .catch(err => showResult(`Error: ${err.message}`, 'danger'))
             .finally(() => setLoading(false));
-        }
+    }
 
-        // --- Helper Functions (Same as before) ---
-        function generateMonthPresets() {
-            const container = document.getElementById('monthPresets');
-            const now = new Date();
-            for (let i = 0; i < 12; i++) {
-                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                const start = new Date(d.getFullYear(), d.getMonth(), 1, 0,0,0);
-                const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23,59,59);
-                const btn = document.createElement('button');
-                btn.className = 'btn btn-outline-primary preset-btn';
-                btn.textContent = start.toLocaleDateString('en-US', {month:'short', year:'numeric'});
-                btn.onclick = () => {
-                    document.getElementById('startDate').value = formatLocalISO(start);
-                    document.getElementById('endDate').value = formatLocalISO(end);
-                };
-                container.appendChild(btn);
-            }
+    // --- Helper Functions ---
+    function generateMonthPresets() {
+        const container = document.getElementById('monthPresets');
+        const now = new Date();
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const start = new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0);
+            const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-outline-primary preset-btn';
+            btn.textContent = start.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+            btn.onclick = () => {
+                document.getElementById('startDate').value = formatLocalISO(start);
+                document.getElementById('endDate').value = formatLocalISO(end);
+            };
+            container.appendChild(btn);
         }
+    }
 
-        function generateWeekPresets() {
-            const container = document.getElementById('weekPresets');
-            const now = new Date();
-            for(let i=0; i<52; i++) {
-                const d = new Date(now); d.setDate(now.getDate() - (7*i));
-                const day = d.getDay(); const diff = d.getDate() - day + (day == 0 ? -6:1);
-                const start = new Date(d.setDate(diff)); start.setHours(0,0,0,0);
-                const end = new Date(start); end.setDate(start.getDate()+6); end.setHours(23,59,59);
+    function generateWeekPresets() {
+        const container = document.getElementById('weekPresets');
+        const now = new Date();
+        for (let i = 0; i < 52; i++) {
+            const d = new Date(now); d.setDate(now.getDate() - (7 * i));
+            const day = d.getDay(); const diff = d.getDate() - day + (day == 0 ? -6 : 1);
+            const start = new Date(d.setDate(diff)); start.setHours(0, 0, 0, 0);
+            const end = new Date(start); end.setDate(start.getDate() + 6); end.setHours(23, 59, 59);
 
-                const btn = document.createElement('button');
-                btn.className = 'btn btn-outline-secondary preset-btn';
-                btn.textContent = `Week of ${start.toLocaleDateString('en-US', {month:'numeric', day:'numeric'})}`;
-                btn.onclick = () => {
-                    document.getElementById('startDate').value = formatLocalISO(start);
-                    document.getElementById('endDate').value = formatLocalISO(end);
-                };
-                container.appendChild(btn);
-            }
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-outline-secondary preset-btn';
+            btn.textContent = `Week of ${start.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })}`;
+            btn.onclick = () => {
+                document.getElementById('startDate').value = formatLocalISO(start);
+                document.getElementById('endDate').value = formatLocalISO(end);
+            };
+            container.appendChild(btn);
         }
+    }
 
-        function renderDownloadLinks(files) {
-            const list = document.getElementById('fileList');
-            list.innerHTML = '';
-            document.getElementById('downloadSection').classList.remove('d-none');
-            files.forEach(f => {
-                const fname = f.split(/[\\/]/).pop();
-                list.innerHTML += `<li class="list-group-item file-list-group-item">
-                    <span>${fname}</span>
-                    <a href="/download/${fname}" class="btn btn-sm btn-outline-success" download>Download</a>
-                </li>`;
-            });
-        }
+    function renderDownloadLinks(files) {
+        const list = document.getElementById('fileList');
+        list.innerHTML = '';
+        document.getElementById('downloadSection').classList.remove('d-none');
+        files.forEach(f => {
+            // 后端返回 EXPORT_PATH 下的安全相对路径，保留子目录以便正确下载。
+            const relativePath = String(f).replace(/\\/g, '/').split('/').filter(Boolean)
+                .map(encodeURIComponent).join('/');
+            const fname = String(f).split(/[\\/]/).pop();
+            const li = document.createElement('li');
+            li.className = 'list-group-item file-list-group-item';
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = fname;
+            const link = document.createElement('a');
+            link.href = '/download/' + relativePath;
+            link.className = 'btn btn-sm btn-outline-success';
+            link.setAttribute('download', '');
+            link.textContent = 'Download';
+            li.appendChild(nameSpan);
+            li.appendChild(link);
+            list.appendChild(li);
+        });
+    }
 
-        function resetUI() {
-            document.getElementById('downloadSection').classList.add('d-none');
-            document.getElementById('resultAlert').classList.add('d-none');
-        }
-        function setLoading(loading) {
-            const btn = document.getElementById('exportBtn');
-            const spinner = document.getElementById('btnSpinner');
-            btn.disabled = loading;
-            spinner.classList.toggle('d-none', !loading);
-            document.getElementById('progressContainer').classList.toggle('d-none', !loading);
-        }
-        function updateProgress(p) {
+    function resetUI() {
+        document.getElementById('downloadSection').classList.add('d-none');
+        document.getElementById('resultAlert').classList.add('d-none');
+        document.getElementById('fileList').innerHTML = '';
+        // 进度条复位到不确定状态（0%）
+        updateProgress(0);
+    }
+    function setLoading(loading) {
+        const btn = document.getElementById('exportBtn');
+        const spinner = document.getElementById('btnSpinner');
+        btn.disabled = loading;
+        spinner.classList.toggle('d-none', !loading);
+        document.getElementById('progressContainer').classList.toggle('d-none', !loading);
+        if (loading) {
+            // 明确告知用户这是"已提交等待结果"而非真实进度
             const bar = document.getElementById('progressBar');
-            bar.style.width = p + '%';
-            bar.textContent = p < 100 ? 'Processing...' : 'Done';
-            bar.className = p < 100 ? 'progress-bar progress-bar-striped progress-bar-animated bg-info' : 'progress-bar bg-success';
+            bar.style.width = '100%';
+            bar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-info';
+            bar.textContent = '任务已提交，正在导出，请稍候（完成后此处显示结果）…';
         }
-        function showResult(msg, type) {
-            const alert = document.getElementById('resultAlert');
-            alert.className = `alert alert-${type} mt-3`;
-            alert.textContent = msg;
-            alert.classList.remove('d-none');
+    }
+    function updateProgress(p) {
+        const bar = document.getElementById('progressBar');
+        if (p >= 100) {
+            bar.style.width = '100%';
+            bar.textContent = 'Done';
+            bar.className = 'progress-bar bg-success';
+        } else {
+            bar.style.width = '100%';
+            bar.textContent = 'Processing...';
+            bar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-info';
         }
-    </script>
-</body>
-</html>
+    }
+    function showResult(msg, type) {
+        const alert = document.getElementById('resultAlert');
+        alert.className = `alert alert-${type} mt-3`;
+        alert.textContent = msg;
+        alert.classList.remove('d-none');
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,21 @@
+<nav class="iis-standalone-nav{% if nav_theme == 'dark' %} iis-standalone-nav-dark{% endif %}" aria-label="主导航">
+    <a class="iis-nav-brand" href="{{ url_for('index') }}">IIS 情报中心</a>
+    <div class="iis-nav-links">
+        <a class="{% if nav_active == 'list' %}active{% endif %}" href="{{ url_for('intelligences_view') }}">情报列表</a>
+        <a class="{% if nav_active == 'search' %}active{% endif %}" href="{{ url_for('intelligences_search_page') }}">搜索</a>
+        <a class="{% if nav_active == 'clusters' %}active{% endif %}" href="{{ url_for('intelligences_clusters_view') }}">情报聚类</a>
+        <a class="{% if nav_active == 'entity' %}active{% endif %}" href="{{ url_for('entity_frequency_page') }}">实体频率</a>
+        {% if session.get('logged_in') %}
+        <a class="{% if nav_active == 'graph' %}active{% endif %}" href="{{ url_for('intelligence_graph_page') }}">态势推演</a>
+        <a class="{% if nav_active == 'dashboard' %}active{% endif %}" href="{{ url_for('intelligence_dashboard_page') }}">仪表盘</a>
+        <a class="{% if nav_active == 'monitor' %}active{% endif %}" href="/monitor/api/dashboard">系统监控</a>
+        <a class="{% if nav_active == 'export' %}active{% endif %}" href="{{ url_for('export_mongodb_page') }}">导出</a>
+        <form action="{{ url_for('logout') }}" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit">退出</button>
+        </form>
+        {% else %}
+        <a href="{{ url_for('login') }}">登录</a>
+        {% endif %}
+    </div>
+</nav>

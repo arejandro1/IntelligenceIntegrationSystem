@@ -22,6 +22,35 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // 游客模式：服务端会把 per_page 静默钳到 20，这里同步裁剪 UI 选项并给出提示
+    const GUEST_MAX_PER_PAGE = 20;
+
+    function applyGuestLimits() {
+        if (window.IS_AUTHENTICATED === true || !countSelect) return;
+        let clamped = false;
+        for (const opt of Array.from(countSelect.options)) {
+            if (Number(opt.value) > GUEST_MAX_PER_PAGE) {
+                opt.remove();
+                clamped = true;
+            }
+        }
+        if (Number(countSelect.value) > GUEST_MAX_PER_PAGE) {
+            countSelect.value = String(GUEST_MAX_PER_PAGE);
+        }
+        if (clamped && !document.querySelector('.guest-perpage-hint')) {
+            const hint = document.createElement('span');
+            hint.className = 'guest-perpage-hint';
+            hint.style.cssText = 'font-size: 12px; color: #6c757d; margin-left: 6px;';
+            hint.textContent = '游客每页最多 20 条';
+            countSelect.parentElement.appendChild(hint);
+        }
+    }
+
+    function effectivePerPage(state) {
+        if (window.IS_AUTHENTICATED === true) return state.per_page;
+        return Math.min(state.per_page, GUEST_MAX_PER_PAGE);
+    }
+
     function getUrlState() {
         const params = new URLSearchParams(window.location.search);
         return {
@@ -73,8 +102,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // 构建请求参数，透传所有必要字段
         const requestParams = new URLSearchParams();
 
+        const perPage = effectivePerPage(state);
+
         requestParams.set('page', state.page);
-        requestParams.set('per_page', state.per_page);
+        requestParams.set('per_page', perPage);
         requestParams.set('search_mode', state.search_mode); // 传给后端
 
         if (state.threshold > 0) requestParams.set('threshold', state.threshold);
@@ -90,32 +121,38 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch(targetUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                },
                 // body: JSON.stringify({}) // Body 为空，因为参数都在 URL query 中了
             });
 
             // [新增] 专门拦截 401 未登录状态
             if (response.status === 401) {
-                const errData = await response.json();
-                // 渲染器显示错误
-                renderer.showError(`
-                    <div class="text-center py-4">
-                        <h4><i class="bi bi-lock-fill"></i> ${errData.error}</h4>
-                        <p>${errData.message}</p>
-                    </div>
-                `);
-
+                const errData = await response.json().catch(() => ({}));
+                const loginLink = { href: '/login', text: '前往登录' };
+                if (window.IS_AUTHENTICATED === true) {
+                    // 页面认为已登录但服务端返回 401：会话已过期
+                    renderer.showError('会话已过期，请重新登录。', loginLink);
+                } else {
+                    renderer.showError(errData.message || errData.error || '请先登录', loginLink);
+                }
                 return; // 终止后续处理
             }
 
-            if (!response.ok) throw new Error(`API Error: ${response.status}`);
+            if (!response.ok) {
+                // 优先展示后端返回的错误说明（如“未登录用户普通搜索仅支持前 5 页”）
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error || errData.message || `API Error: ${response.status}`);
+            }
 
             const data = await response.json();
 
             renderer.render(data.results, {
                 total: data.total,
-                page: state.page,       // 直接用当前的 page
-                per_page: state.per_page // 直接用当前的 per_page
+                page: state.page,  // 直接用当前的 page
+                per_page: perPage  // 游客钳制后的 per_page
             });
         } catch (error) {
             console.error('Load Error:', error);
@@ -175,5 +212,6 @@ document.addEventListener('DOMContentLoaded', () => {
         loadData();
     });
 
+    applyGuestLimits();
     loadData();
 });

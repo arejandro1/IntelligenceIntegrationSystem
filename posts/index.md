@@ -52,3 +52,10 @@
 ## Project Address (github)
 
 [Intelligence Integration System](https://github.com/SleepySoft/IntelligenceIntegrationSystem/tree/dev)
+
+---
+
+<div align="center">
+<a href="https://beian.miit.gov.cn/" target="_blank">京ICP备2026047887号</a><br/>
+<a href="https://beian.mps.gov.cn/#/query/webSearch?code=11010102007849" rel="noreferrer" target="_blank"><img src="/static/beian.png" style="vertical-align: middle; height: 20px; width: 20px;" />京公网安备11010102007849号</a>
+</div>

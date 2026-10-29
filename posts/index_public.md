@@ -10,12 +10,6 @@
 
 [情报搜索](/intelligences/search)
 
-> 20260215: 
-> 
-> 临时开放相似情报搜索功能，欢迎大家体验。入口为文章详情页面右上方的“Find Similar”按钮。
-> 
-> 由于硅基流动AI服务的性能问题，有的情报并未按指令翻译为中文。请大家见谅。
-
 ## 说明
 
 该系统用以收集国内外主流媒体的公开信息，通过AI进行分类、评分、翻译，旨在筛除无价值信息，高效整合全球公开情报。
@@ -31,8 +25,6 @@
 ## 声明
 
 所有情报均来源于媒体发布信息，不代表本人立场。据我观察，某些国外媒体（特别是德国之声，dw）的新闻较为反华，请仔细鉴别。
-
-情报的原始来源如果不使用梯子很有可能打不开，理由大概率因为上面一条。
 
 注意：情报分类中的“本国”和“国内”并不特指中国。为了保证情报分析的通用性，所以并没有加入特定国别的判定。
 
@@ -50,16 +42,9 @@ mongoimport --uri=mongodb://localhost:27017 --db=IntelligenceIntegrationSystem -
 mongoimport --uri=mongodb://localhost:27017 --db=IntelligenceIntegrationSystem --collection=intelligence_low_value --file=intelligence_low_value.json
 ```
 
-## 赞助该项目
+---
 
-本项目使用硅基流动提供的AI服务。如果你能通过我的邀请链接注册，那么我的账户将会获得14元赠金，为该系统增加约半天的AI分析额度。
-
-邀请链接：https://cloud.siliconflow.cn/i/ml9II4B7
-
-或邀请码：ml9II4B7
-
-如果您愿意支持更多，可以在闲鱼搜索“硅基流动赠金”，并将上面的邀请链接提供给商家。
-
-如果您是AI服务提供商，愿意为本项目提供算力，请联系我（联系方式在github说明文本中）。
-
-谢谢。
+<div align="center">
+<a href="https://beian.miit.gov.cn/" target="_blank">京ICP备2026047887号</a><br/>
+<a href="https://beian.mps.gov.cn/#/query/webSearch?code=11010102007849" rel="noreferrer" target="_blank"><img src="/static/beian.png" style="vertical-align: middle; height: 20px; width: 20px;" />京公网安备11010102007849号</a>
+</div>

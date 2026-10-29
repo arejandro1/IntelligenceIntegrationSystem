@@ -901,6 +901,43 @@ body {
     }
 }
 
+/* 键盘焦点和禁用状态：让可操作元素在无鼠标场景下保持清晰可见。 */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 3px solid rgba(13, 110, 253, 0.55);
+    outline-offset: 2px;
+}
+
+.page-btn:disabled,
+.page-btn.disabled[aria-disabled="true"] {
+    pointer-events: none;
+}
+
+.empty-state {
+    padding: 50px 20px;
+    color: #667085;
+    text-align: center;
+}
+
+body.iis-app-body {
+    padding: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+
+    .page-btn:hover,
+    .article-card:hover {
+        transform: none;
+    }
+}
+
 @keyframes fadeIn {
     from {
         opacity: 0;

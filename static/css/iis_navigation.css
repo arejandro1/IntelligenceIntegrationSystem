@@ -1,0 +1,86 @@
+.iis-standalone-nav {
+    width: min(1200px, calc(100% - 32px));
+    margin: 16px auto 20px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.08);
+    color: #1f2937;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.iis-nav-brand,
+.iis-nav-links a,
+.iis-nav-links button {
+    color: inherit;
+    text-decoration: none;
+    font: inherit;
+}
+
+.iis-nav-brand {
+    flex: 0 0 auto;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.iis-nav-links {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.iis-nav-links a,
+.iis-nav-links button {
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.92rem;
+}
+
+.iis-nav-links a:hover,
+.iis-nav-links a.active,
+.iis-nav-links button:hover {
+    background: #eef4ff;
+    color: #174ea6;
+}
+
+.iis-nav-links form {
+    margin: 0;
+}
+
+.iis-standalone-nav-dark {
+    background: #1e293b;
+    border-color: #334155;
+    color: #f1f5f9;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.24);
+}
+
+.iis-standalone-nav-dark .iis-nav-links a:hover,
+.iis-standalone-nav-dark .iis-nav-links a.active,
+.iis-standalone-nav-dark .iis-nav-links button:hover {
+    background: #27354f;
+    color: #7dd3fc;
+}
+
+@media (max-width: 760px) {
+    .iis-standalone-nav {
+        align-items: flex-start;
+        flex-direction: column;
+        width: min(100% - 20px, 1200px);
+        margin-top: 10px;
+    }
+
+    .iis-nav-links {
+        justify-content: flex-start;
+        width: 100%;
+    }
+}
