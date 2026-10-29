@@ -7,8 +7,9 @@ VectorDB 压力与影响评估脚本。
   - 同时模拟内部向量化写入（upsert），验证搜索洪峰是否影响写入吞吐。
   - 输出 P50/P95/P99 延迟、成功率、服务端队列/内存指标。
 
-运行前请确保 VectorDB 服务已启动，例如：
-    python VectorDB/VectorDBBService.py --db-path ./_data/VectorDB --model BAAI/bge-m3
+运行前请确保 VectorDB 服务已启动，例如（必须用 -m 方式启动；
+直接 python VectorDB/VectorDBBService.py 会因顶层包导入 VectorDB.aggregation.* 失败）：
+    python -m VectorDB.VectorDBBService --db-path ./_data/VectorDB --model BAAI/bge-m3
 
 用法示例：
     python Test/vectordb_stress_test.py \
@@ -56,8 +57,8 @@ def now_str() -> str:
 
 
 class VectorDBStressTest:
-    def __init__(self, base_url: str, collection: str):
-        self.client = VectorDBClient(base_url)
+    def __init__(self, base_url: str, collection: str, admin_token: str = ""):
+        self.client = VectorDBClient(base_url, admin_token=admin_token or None)
         self.collection = collection
         self.remote = self.client.get_collection(collection)
 
@@ -125,12 +126,7 @@ class VectorDBStressTest:
             return {"error": str(e)}
 
     def fetch_memory_status(self) -> dict:
-        try:
-            import requests
-            resp = requests.get(f"{self.client.base_url}/api/status/memory", timeout=5)
-            return resp.json()
-        except Exception as e:
-            return {"error": str(e)}
+        return self.client.get_memory_status()
 
     def run_search_load(self, concurrency: int, total: int) -> list:
         print(f"[{now_str()}] 启动搜索压测：并发={concurrency}, 总请求={total}")
@@ -218,11 +214,16 @@ def main():
     parser.add_argument("--search-requests", type=int, default=100)
     parser.add_argument("--upsert-concurrency", type=int, default=2)
     parser.add_argument("--upsert-requests", type=int, default=30)
+    parser.add_argument(
+        "--admin-token",
+        default=os.getenv("VECTOR_ADMIN_TOKEN", ""),
+        help="VectorDB admin token; defaults to VECTOR_ADMIN_TOKEN",
+    )
     parser.add_argument("--mixed", action="store_true",
                         help="同时运行搜索与写入，评估互相影响")
     args = parser.parse_args()
 
-    test = VectorDBStressTest(args.base_url, args.collection)
+    test = VectorDBStressTest(args.base_url, args.collection, admin_token=args.admin_token)
     test.warmup()
 
     print(f"[{now_str()}] 压测前服务端状态: {test.fetch_server_status()}")

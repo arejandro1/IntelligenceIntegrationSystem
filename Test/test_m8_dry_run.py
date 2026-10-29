@@ -52,7 +52,11 @@ class TestPeakZeroCalls(unittest.TestCase):
     """高峰时段真实调用=0"""
     def test_peak_time_api_blocked(self):
         # 用可注入时间的策略验证高峰禁止
-        from test_m8_time_policy import FakeClockPolicy
+        # 兼容直接运行（test_m8_time_policy）和模块运行（Test.test_m8_time_policy）两种方式
+        try:
+            from test_m8_time_policy import FakeClockPolicy
+        except ImportError:
+            from Test.test_m8_time_policy import FakeClockPolicy
         peak_policy = FakeClockPolicy(datetime(2026, 8, 8, 10, 0, 0))
         self.assertFalse(peak_policy.allowed_to_start_request())
 
