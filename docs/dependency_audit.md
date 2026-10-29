@@ -56,3 +56,23 @@
 2. 需兼容性评估项：urllib3（1.26.20→≥2.8.0，与 requests 联动）、cryptography（→50.0.0，与 pyOpenSSL 联动）、starlette（随 fastapi 联动）。
 3. 无修复项：ecdsa、python-jose 建议从依赖树移除或替换。
 4. 本报告仅为检查记录，未执行任何修复；升级前须按项目规则更新 requirements 并回归 `_run_tests.py`。
+
+## 五、处置执行记录（2026-10-29）
+
+已执行升级并通过全量回归（403 用例 0 失败 0 错误）：
+
+| 包 | 原钉版 | 新钉版 | 覆盖漏洞 |
+|----|--------|--------|----------|
+| Flask | 3.1.1 | 3.1.3 | PYSEC-2026-2151 |
+| Werkzeug | 3.1.3 | 3.1.9 | CVE-2026-102598 |
+| requests | 2.32.3 | 2.34.2 | PYSEC-2026-1872 / 2275 |
+| pymongo | 4.13.0 | 4.19.0 | CVE-2026-88029、CVE-2026-96747/48/49 |
+| urllib3 | 1.26.20（与 freeze 2.3.0 矛盾） | 2.8.0（三份清单统一） | PYSEC-2026-4175/4176/4177 |
+
+同步修正：huggingface-hub 0.32.2→0.36.0、typing_extensions 4.13.2→4.15.0（与 freeze 对齐）；
+requirements-server.txt 原 13 个未钉包全部钉版；playwright-stealth 统一为 tf-playwright-stealth==1.2.0（与主清单一致）。
+
+仍待办：
+- cryptography 45.0.3→50.0.0：大版本升级，需评估 pyOpenSSL 25.1.0 兼容性后统一提升；
+- ecdsa / python-jose 无修复版本：需评估从依赖树移除或替换；
+- streamlit 未钉版：仅 ModelTraining/validation2_review_app.py 引用，建议移入独立 requirements 或钉版。
