@@ -115,7 +115,6 @@ class IntelligenceQueryEngine:
             # Find the newest document as base reference
             newest_doc = collection.find_one(
                 filter={},
-                # TODO: Temporary hardcoded.
                 # 加 _id 次级排序:归档时间相同时保证结果确定
                 sort=[("APPENDIX.__TIME_ARCHIVED__", pymongo.DESCENDING), ("_id", pymongo.DESCENDING)],
                 max_time_ms=self._max_time_ms
@@ -131,51 +130,6 @@ class IntelligenceQueryEngine:
         except pymongo.errors.PyMongoError as e:
             logger.error(f"Intelligence summary retrieval failed: {str(e)}")
             return {"total_count": 0, "base_uuid": None}
-
-    # def get_paginated_intelligences(self, base_uuid: str, offset: int, limit: int) -> List[dict]:
-    #     """
-    #     Retrieve paginated intelligence with stable ordering
-    #
-    #     Args:
-    #         base_uuid: Reference UUID for stable pagination anchor (None for start)
-    #         offset: Number of documents to skip from the base
-    #         limit: Maximum number of documents to return
-    #
-    #     Returns:
-    #         List of processed intelligence documents
-    #     """
-    #     if limit <= 0:
-    #         return []
-    #
-    #     collection = self.__mongo_db.collection
-    #     sort_order = [
-    #         # TODO: Temporary hardcoded.
-    #         ("APPENDIX.__TIME_ARCHIVED__", pymongo.DESCENDING),
-    #         ("_id", pymongo.DESCENDING)  # Secondary sort for consistency
-    #     ]
-    #
-    #     try:
-    #         if base_uuid:
-    #             base_doc = collection.find_one({"UUID": base_uuid})
-    #             if not base_doc:
-    #                 logger.warning(f"Base UUID not found: {base_uuid}")
-    #                 return []
-    #
-    #             cursor = collection.find(
-    #                 filter={"PUB_TIME": {"$lte": base_doc["PUB_TIME"]}}
-    #             ).sort(sort_order).skip(offset).limit(limit)
-    #         else:
-    #             cursor = collection.find().sort(sort_order).skip(offset).limit(limit)
-    #
-    #         return [self.process_document(doc) for doc in cursor]
-    #
-    #     except pymongo.errors.PyMongoError as e:
-    #         logger.error(f"Pagination query failed: {str(e)}")
-    #         return []
-    #
-    #     except Exception as e:
-    #         logger.error(f"Exception on query: {str(e)}")
-    #         return []
 
     def query_intelligence(
             self,
@@ -736,7 +690,6 @@ class IntelligenceQueryEngine:
         """
         try:
             # Apply sorting by TIME field in descending order
-            # TODO: Temporary hardcoded.
             cursor = collection.find(query).sort("APPENDIX.__TIME_ARCHIVED__", pymongo.DESCENDING)
 
             # Apply pagination parameters if provided

@@ -76,7 +76,9 @@ def intelligence_crawler_exception_handler(
         e: Exception,
         context: CrawlContext
 ):
-    pass
+    # 预留的流水线异常钩子：当前未接入 pipeline 配置。
+    # 若后续接线，必须保证异常可见，不得静默吞掉。
+    context.logger.warning(f"Crawler exception on {url}: {type(e).__name__}: {e}")
 
 
 class CommonIntelligenceCrawlFlow:

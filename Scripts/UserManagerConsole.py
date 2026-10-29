@@ -467,7 +467,6 @@ class UserManagerConsole:
         # 更新角色（通过删除重建实现）
         if new_permissions is not None:
             # 先删除旧角色
-            # TODO: Add delete role.
             del_success, del_msg = self.user_manager.delete_role(selected_role['name'])
             if not del_success:
                 print(f"❌ 删除旧角色失败: {del_msg}")
