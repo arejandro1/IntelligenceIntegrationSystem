@@ -8,6 +8,7 @@ from typing import Optional, List, Tuple, Union, Dict, Any
 from Tools.DateTimeUtility import ensure_timezone_aware
 from Tools.MongoDBAccess import MongoDBStorage
 from ServiceComponent.IntelligenceHubDefines import APPENDIX_TIME_ARCHIVED, APPENDIX_MAX_RATE_SCORE
+from ServiceComponent.IntelligenceHubDefines_v2 import APPENDIX_TOTAL_SCORE
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,8 @@ class IntelligenceStatisticsEngine:
         """
         # try:
 
-        # MongoDB aggregation pipeline for score distribution[4,9](@ref)
+        # MongoDB 聚合：v2 使用 __TOTAL_SCORE__，v1 使用 __MAX_RATE_SCORE__。
+        # 用 $ifNull 兼容两者，并用 $floor 取整分组，避免一位小数（如 7.5）被静默丢弃。
         pipeline = [
             {
                 "$match": {
@@ -40,15 +42,37 @@ class IntelligenceStatisticsEngine:
                         "$gte": ensure_timezone_aware(start_time),
                         "$lte": ensure_timezone_aware(end_time)
                     },
-                    f"APPENDIX.{APPENDIX_MAX_RATE_SCORE}": {
-                        "$gte": 1,
-                        "$lte": 10
+                    "$expr": {
+                        "$and": [
+                            {
+                                "$gte": [
+                                    {"$ifNull": [f"$APPENDIX.{APPENDIX_TOTAL_SCORE}",
+                                                 f"$APPENDIX.{APPENDIX_MAX_RATE_SCORE}",
+                                                 0]},
+                                    0
+                                ]
+                            },
+                            {
+                                "$lte": [
+                                    {"$ifNull": [f"$APPENDIX.{APPENDIX_TOTAL_SCORE}",
+                                                 f"$APPENDIX.{APPENDIX_MAX_RATE_SCORE}",
+                                                 0]},
+                                    10
+                                ]
+                            }
+                        ]
                     }
                 }
             },
             {
                 "$group": {
-                    "_id": f"$APPENDIX.{APPENDIX_MAX_RATE_SCORE}",
+                    "_id": {
+                        "$floor": {
+                            "$ifNull": [f"$APPENDIX.{APPENDIX_TOTAL_SCORE}",
+                                        f"$APPENDIX.{APPENDIX_MAX_RATE_SCORE}",
+                                        0]
+                        }
+                    },
                     "count": {"$sum": 1}
                 }
             },
@@ -57,17 +81,15 @@ class IntelligenceStatisticsEngine:
             }
         ]
 
-        # Execute aggregation query[4](@ref)
         collection = self.__mongo_db.collection
         results = collection.aggregate(pipeline)
 
-        # Format results for frontend
         score_distribution = {str(i): 0 for i in range(1, 11)}  # Initialize all scores 1-10 with count 0
 
         for result in results:
-            score = str(result['_id'])
-            if score in score_distribution:
-                score_distribution[score] = result['count']
+            score = int(result['_id'])
+            if 1 <= score <= 10:
+                score_distribution[str(score)] = result['count']
 
         return score_distribution
 

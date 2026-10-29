@@ -4,7 +4,6 @@
 # ----------------------------------------------------------------------------------------- #
 
 import logging
-import urllib3
 from logging import Logger
 
 from GlobalConfig import DEFAULT_COLLECTOR_TOKEN
@@ -16,8 +15,6 @@ from Tools.ProcessCotrolException import ProcessSkip, ProcessProblem, ProcessIgn
 from IntelligenceCrawler.CrawlerGovernanceCore import GovernanceManager, CrawlSession
 
 DEFAULT_CRAWL_ERROR_THRESHOLD = 3
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -124,6 +121,18 @@ class CrawlContext:
             result = self._submit_collected_data(self.i_hub_url, collected_data, 10)
 
             if result.get('status', 'success') == 'error':
+                # CONTRACT-1：服务端 /collect 返回 {"status":"error","code":...}。
+                code = result.get('code')
+                if code in ('duplicate', 'validation'):
+                    # 终态错误：数据本身被服务端拒收，丢弃且不缓存重投。
+                    # duplicate → 记 skip（服务端已存在）；validation → 记 fail_perm（数据非法）。
+                    reason = result.get('reason') or result.get('message') or code
+                    self.logger.warning(f"Submit rejected permanently ({code}): {reason}")
+                    if code == 'duplicate':
+                        raise ProcessSkip(f'server duplicate: {reason}')
+                    raise ProcessProblem('submit_rejected', position=collected_data.informant or '')
+                # 无 code 字段（旧服务端）或临时性错误（queue_full/rate_limited/internal）：
+                # 维持现有缓存重试，下一轮重新提交。
                 if cache_on_error:
                     # Only cache on submission error.
                     self.crawl_cache.cache_content(
@@ -136,11 +145,18 @@ class CrawlContext:
         self.logger.debug(f'Article finished.')
 
     def submit_cached_data(self, limit: int = -1):
+        """
+        逐条弹出缓存数据并尝试提交。
+        :return: 本轮已消费（弹出并尝试过提交）的缓存链接集合，
+                 供调用方在同轮跳过这些链接，避免重复消费同一缓存数据。
+        """
         count = 0
+        processed_urls = set()
         while (limit < 0) or (count < limit):
             url, content = self.crawl_cache.pop_random_item()
             if not content:
                 break
+            processed_urls.add(url)
             collected_data, group = content                                         # <- Cached data is unpacked here.
             with self.crawler_governor.transaction(url, group) as task:
                 try:
@@ -154,6 +170,7 @@ class CrawlContext:
                     count += 1
         if count:
             self.logger.info(f"Process cached data for {self.flow_name}, count: {count}.")
+        return processed_urls
 
     def handle_process_exception(self, task: CrawlSession, e: Exception):
         if isinstance(e, ProcessSkip):

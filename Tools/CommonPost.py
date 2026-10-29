@@ -26,6 +26,10 @@ def common_post(url: str, data: Dict[str, Any], timeout: int = 10) -> Dict[str, 
     :param timeout: Total timeout in seconds (connection + read)
     :return: Response JSON or error dictionary
     """
+    # 安全与健壮性：连接/读超时拆分配置，timeout<=3 时读超时不为负
+    connect_timeout = 3
+    read_timeout = max(0.5, timeout - connect_timeout)
+
     # Configure retry strategy (3 retries with backoff)
     retry_strategy = Retry(
         total=3,
@@ -53,7 +57,7 @@ def common_post(url: str, data: Dict[str, Any], timeout: int = 10) -> Dict[str, 
                 url,
                 json=data,  # Auto-serializes to JSON + sets Content-Type
                 headers={'X-Request-Source': 'IntelligenceHub'},
-                timeout=(3, timeout - 3)  # 3s connection, remainder for read
+                timeout=(connect_timeout, read_timeout)
             )
 
             # Validate HTTP status (raises exception for 4xx/5xx)

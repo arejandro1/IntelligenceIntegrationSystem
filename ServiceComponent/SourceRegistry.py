@@ -70,3 +70,32 @@ class SourceRegistry:
     def count(self) -> int:
         """来源总数"""
         return len(self._sources)
+
+    def resolve_by_informant(self, url: str) -> Optional[SourceEntry]:
+        """按文章 URL（informant）域名反查来源条目。
+
+        M3 接线新增：现有 CrawlTasks 提交数据不携带 source 字段，
+        预筛在 source 缺失时用本方法做域名反查兜底。
+
+        匹配规则：netloc 与 informant_domains 精确相等，或为其子域
+        （netloc == d 或 netloc.endswith('.' + d)）。
+        多个来源同时命中视为歧义，返回 None（fail-closed，由调用方拒绝并告警）。
+        """
+        try:
+            from urllib.parse import urlparse
+            netloc = (urlparse(str(url)).netloc or '').lower().split(':')[0]
+        except Exception:
+            return None
+        if not netloc:
+            return None
+
+        hits: List[SourceEntry] = []
+        for entry in self._sources.values():
+            for domain in entry.informant_domains:
+                d = str(domain).lower().strip()
+                if not d:
+                    continue
+                if netloc == d or netloc.endswith('.' + d):
+                    hits.append(entry)
+                    break
+        return hits[0] if len(hits) == 1 else None

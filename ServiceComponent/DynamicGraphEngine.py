@@ -98,6 +98,16 @@ class DynamicGraphEngine:
         self.ai_client = ai_client
         self.snapshots_collection = self.db.db['intelligence_storylines']
 
+        # --- P7: 推演并发上限与 seed 去重 ---
+        # 群晖 J4125 资源有限，限制同时进行的推演任务数
+        self._build_semaphore = threading.BoundedSemaphore(3)
+        self._active_seeds: Set[str] = set()
+        self._active_seeds_lock = threading.Lock()
+
+        # --- P7: 启动恢复 + TTL 索引 ---
+        self._recover_stale_tasks()
+        self._ensure_ttl_index()
+
         # --- 动态高频实体缓存 ---
         self._stop_entities_cache: Set[str] = set()
         self._stop_entities_last_update: float = 0.0
@@ -126,7 +136,19 @@ class DynamicGraphEngine:
         :param max_depth: BFS 最大搜索深度 (跳数)
         :param window_days: 每次搜索的双向时间窗口 (如 7，表示向前 7 天，向后 7 天)
         :return: 任务标识符 thread_id
+        :raises ValueError: 同一 seed 正在推演中时拒绝重复触发
         """
+        # P7: 参数 clamp，防止异常输入导致超大搜索
+        max_depth = max(1, min(int(max_depth), 5))
+        window_days = max(1, min(int(window_days), 30))
+
+        # P7: seed 去重——同一 seed 正在推演则拒绝，避免重复计算
+        with self._active_seeds_lock:
+            if seed_uuid in self._active_seeds:
+                logger.warning(f"Seed {seed_uuid} 正在推演中，拒绝重复触发。")
+                raise ValueError(f"Seed {seed_uuid} 正在推演中，请等待完成后再触发。")
+            self._active_seeds.add(seed_uuid)
+
         thread_id = f"thread_{uuid.uuid4().hex[:12]}"
 
         # 1. 初始快照入库
@@ -136,17 +158,63 @@ class DynamicGraphEngine:
             nodes=[],
             edges=[]
         )
-        self.snapshots_collection.insert_one(initial_snapshot.model_dump())
+        doc = initial_snapshot.model_dump()
+        # P7: 注入 TTL 字段（MongoDB TTL 索引仅对 BSON Date 生效，created_at 是 float）
+        doc['_expires_at'] = datetime.datetime.now(datetime.timezone.utc)
+        self.snapshots_collection.insert_one(doc)
 
-        # 2. 启动后台线程执行计算
+        # 2. 启动后台线程执行计算（通过 _safe_run_pipeline 包装层管理信号量与 seed 锁）
         threading.Thread(
-            target=self._run_snowballing_pipeline,
+            target=self._safe_run_pipeline,
             args=(thread_id, seed_uuid, max_depth, window_days),
             daemon=True,
             name=f"GraphBuilder-{thread_id}"
         ).start()
 
         return thread_id
+
+    def _safe_run_pipeline(self, thread_id: str, seed_uuid: str, max_depth: int, window_days: int):
+        """P7: 信号量获取/释放 + seed 锁清理的包装层。"""
+        acquired = False
+        try:
+            # 非阻塞获取信号量，并发已满则标记失败
+            acquired = self._build_semaphore.acquire(blocking=False)
+            if not acquired:
+                logger.warning(f"并发推演已达上限(3)，任务 {thread_id} 被拒绝。")
+                self.snapshots_collection.update_one(
+                    {"thread_id": thread_id},
+                    {"$set": {"status": "FAILED", "reject_reason": "并发上限"}}
+                )
+                return
+            self._run_snowballing_pipeline(thread_id, seed_uuid, max_depth, window_days)
+        finally:
+            if acquired:
+                self._build_semaphore.release()
+            with self._active_seeds_lock:
+                self._active_seeds.discard(seed_uuid)
+
+    def _ensure_ttl_index(self):
+        """P7: 为 intelligence_storylines 创建 TTL 索引，30 天后自动过期，避免无限累积。"""
+        try:
+            self.snapshots_collection.create_index(
+                "_expires_at",
+                expireAfterSeconds=30 * 24 * 3600,
+                name="ttl_expires_at"
+            )
+        except Exception as e:
+            logger.warning(f"创建 TTL 索引失败(可能已存在配置不同): {e}")
+
+    def _recover_stale_tasks(self):
+        """P7: 启动恢复——把崩溃/重启残留的 PROCESSING/ANALYZING 任务标记为 FAILED。"""
+        try:
+            result = self.snapshots_collection.update_many(
+                {"status": {"$in": ["PROCESSING", "ANALYZING"]}},
+                {"$set": {"status": "FAILED", "recovery_note": "进程重启时标记为失败"}}
+            )
+            if result.modified_count > 0:
+                logger.info(f"启动恢复: 已将 {result.modified_count} 个卡死的推演任务标记为 FAILED。")
+        except Exception as e:
+            logger.error(f"启动恢复失败: {e}", exc_info=True)
 
     def get_snapshot(self, thread_id: str) -> Optional[Dict[str, Any]]:
         """根据 thread_id 获取最新的推演快照状态与数据"""
@@ -503,7 +571,14 @@ class DynamicGraphEngine:
             ai_data = json.loads(ai_json_str)
 
             # 判决逻辑
-            score = ai_data.get("llm_evaluation_score", 5)
+            # P7: 强制类型转换 + clamp，LLM 可能返回 "7"(字符串) 导致 TypeError 静默走 COMPLETED
+            raw_score = ai_data.get("llm_evaluation_score", 5)
+            try:
+                score = int(float(raw_score))
+                score = max(1, min(score, 10))
+            except (TypeError, ValueError):
+                logger.warning(f"[{thread_id}] LLM 返回的 llm_evaluation_score 无法转为 int: {raw_score!r}，默认 5。")
+                score = 5
             final_status = "COMPLETED" if score >= 5 else "REJECTED"
 
             self.snapshots_collection.update_one(

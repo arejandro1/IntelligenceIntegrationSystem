@@ -2,12 +2,15 @@
 System resource monitoring module for tracking system and process metrics.
 Provides thread-safe resource monitoring and management capabilities.
 """
+import logging
 import os
 import psutil
 import threading
 import time
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Any, Callable
+
+logger = logging.getLogger(__name__)
 
 
 class SystemMonitor:
@@ -276,8 +279,9 @@ class SystemMonitor:
             try:
                 p = psutil.Process(pid)
                 p.cpu_percent(interval=None)
-            except Exception:
-                pass
+            except Exception as e:
+                # 基线初始化时进程可能已退出：跳过该 PID 即可（后续循环会再处理）
+                logger.debug(f"Init cpu_percent baseline failed for pid={pid}: {e}")
 
         while self.running:
             try:

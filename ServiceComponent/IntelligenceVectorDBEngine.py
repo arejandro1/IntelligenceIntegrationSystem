@@ -1,6 +1,8 @@
 import datetime
+import math
+import time
 import logging
-from functools import lru_cache
+import threading
 from typing import Optional, Tuple, List, Dict, Any
 
 from VectorDB.VectorDBClient import RemoteCollection
@@ -20,13 +22,18 @@ class IntelligenceVectorDBEngine:
     """
 
     def __init__(self, vector_db_collection: RemoteCollection, batch_size: int = 50,
-                 query_cache_size: int = 256):
+                 query_cache_size: int = 256, query_cache_ttl: float = 300.0):
         self.collection = vector_db_collection
         self.batch_size = batch_size
         self._buffer: List[Dict] = []
-        # Cache at the business-engine level as well: the same query may hit both
-        # summary and full-text collections, and may be repeated across pages.
-        self._query_cache = lru_cache(maxsize=query_cache_size)(self._raw_query)
+        self._buffer_lock = threading.RLock()
+        # 查询缓存从无 TTL 的 lru_cache 改为带 TTL 的手工 LRU:
+        # 服务端(VectorStorageEngine.Repo)已改实例级缓存,这里同样加 TTL,
+        # 避免查询结果永不过期导致数据更新后检索不到。
+        self._query_cache: Dict[Any, Tuple[float, List[Dict]]] = {}
+        self._query_cache_lock = threading.Lock()
+        self._query_cache_maxsize = query_cache_size
+        self._query_cache_ttl = query_cache_ttl
 
     def _parse_timestamp_safe(self, time_val: Any) -> Optional[float]:
         if time_val is None:
@@ -85,12 +92,24 @@ class IntelligenceVectorDBEngine:
         if total_score is None:
             total_score = appendix.get('__MAX_RATE_SCORE__', 0.0)  # Fallback to v1 string key
 
+        # P8 修复:total_score 可能是非数值字符串或 NaN,直接 float() 会抛异常或
+        # 把 NaN 写入 ChromaDB(导致后续排序/比较异常)。统一安全转换,NaN/inf/异常→0.0。
+        def _safe_score(v) -> float:
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                return 0.0
+            if math.isnan(f) or math.isinf(f):
+                return 0.0
+            return f
+        safe_total_score = _safe_score(total_score)
+
         # 4. Metadata Construction
         metadata = {
             "uuid": intelligence.UUID,
             "informant": intelligence.INFORMANT,
             "archived_timestamp": archived_ts,
-            "total_score": float(total_score) if total_score else 0.0,
+            "total_score": safe_total_score,
             # 'timestamp' is the primary key for temporal analysis in the DB engine
             "timestamp": pub_ts if pub_ts is not None else archived_ts
         }
@@ -116,20 +135,34 @@ class IntelligenceVectorDBEngine:
 
     def add_to_batch(self, intelligence: ArchivedData, data_type: str, timeout: float = 120):
         doc = self._prepare_document(intelligence, data_type)
-        if doc:
+        if not doc:
+            return
+        with self._buffer_lock:
             self._buffer.append(doc)
-        if len(self._buffer) >= self.batch_size:
+            buffer_len = len(self._buffer)
+        if buffer_len >= self.batch_size:
             self.commit(timeout)
 
     def commit(self, timeout: float = 120):
-        if not self._buffer:
-            return
+        with self._buffer_lock:
+            if not self._buffer:
+                return
+            batch_to_send = list(self._buffer)
         try:
-            self.collection.upsert_batch(self._buffer, timeout=timeout)
+            self.collection.upsert_batch(batch_to_send, timeout=timeout)
         except Exception as e:
+            # 失败时保留 buffer,等待下一次 commit 重试,
+            # 避免 finally: clear() 使失败后的整批数据丢失。
             logger.error(f"Error committing batch: {e}")
-        finally:
-            self._buffer.clear()
+            return
+        with self._buffer_lock:
+            # 只移除已成功发送的项(期间可能又有新项加入)
+            for doc in batch_to_send:
+                try:
+                    self._buffer.remove(doc)
+                except ValueError:
+                    # 并发下其他线程已移除同一项：list.remove 的 ValueError 属预期竞态
+                    pass
 
     def _raw_query(self,
                    text: str,
@@ -201,7 +234,27 @@ class IntelligenceVectorDBEngine:
         Caches results by (text, top_n, score_threshold, periods, rate filters,
         force_db_filter, post_filter_multiplier).
         """
-        return self._query_cache(
+        # 手动 TTL LRU:key 由全部查询参数构成;过期或缺失则执行真实查询并缓存。
+        cache_key = (
+            text,
+            top_n,
+            score_threshold,
+            event_period,
+            archive_period,
+            rate_class,
+            rate_threshold,
+            # 注意:timeout 不参与缓存 key(只是单次调用预算)
+            force_db_filter,
+            post_filter_multiplier,
+        )
+        now = time.time()
+        with self._query_cache_lock:
+            entry = self._query_cache.get(cache_key)
+            if entry is not None and (now - entry[0]) < self._query_cache_ttl:
+                return entry[1]
+
+        # 未命中或已过期:真实查询
+        result = self._raw_query(
             text,
             top_n,
             score_threshold,
@@ -213,6 +266,13 @@ class IntelligenceVectorDBEngine:
             force_db_filter,
             post_filter_multiplier,
         )
+
+        with self._query_cache_lock:
+            # 超过 maxsize 时简单清空(与 Repo 实例级缓存策略一致,避免无界增长)
+            if len(self._query_cache) >= self._query_cache_maxsize:
+                self._query_cache.clear()
+            self._query_cache[cache_key] = (time.time(), result)
+        return result
 
     @staticmethod
     def build_search_text(intelligence_dict: Dict[str, Any], data_type: str = 'summary') -> str:

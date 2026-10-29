@@ -33,14 +33,17 @@ def module_init(service_context: ServiceContext):
 
 
 def start_task(stop_event):
+    # chinanews 为国内站点，对齐 task_crawl_news_cn.py 的做法使用国内代理配置
+    # （collector.cn_site_proxy），不再误用 global_site_proxy 导致国内站点绕行境外代理。
+    cn_proxy = config.get('collector.cn_site_proxy', {})
     feeds_craw_flow('chinanews',
                     feed_list,
                     stop_event,
                     config,
                     15 * 60,
 
-                    partial(fetch_feed, fetch_content=feed_fetcher, proxy=config.get('collector.global_site_proxy', {})),
-                    partial(article_fetcher, timeout_ms=APPLIED_INTERNAL_TIMEOUT_MS, proxy=config.get('collector.global_site_proxy', {})),
+                    partial(fetch_feed, fetch_content=feed_fetcher, proxy=cn_proxy),
+                    partial(article_fetcher, timeout_ms=APPLIED_INTERNAL_TIMEOUT_MS, proxy=cn_proxy),
                     [
                         partial(html_content_converter, selectors='div.left_zw'),
                         partial(sanitize_unicode_string, max_length=10240)

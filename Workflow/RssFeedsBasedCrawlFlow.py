@@ -3,8 +3,8 @@
 #    - Traditional crawl framework.                                     #
 #    - New implemented crawls will use IntelligenceCrawler framework.   #
 # --------------------------------------------------------------------- #
+import os
 
-import urllib3
 import threading
 from uuid import uuid4
 from typing import Callable, TypedDict, Dict, List
@@ -22,8 +22,6 @@ from Tools.ProcessCotrolException import ProcessError, ProcessProblem, ProcessSk
 
 DEFAULT_FEEDS_CRAWL_LOOP_DURATION = 15 * 60
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 
 class FetchContentResult(TypedDict):
     content: str
@@ -34,7 +32,13 @@ class FetchContentResult(TypedDict):
 def build_crawl_ctx_by_service_ctx(name, service_context: ServiceContext) -> CrawlContext:
     config = service_context.config
     governor = service_context.crawler_governor
-    submit_ihub_url = config.get('collector.submit_ihub_url', f'http://127.0.0.1:{DEFAULT_IHUB_PORT}')
+    # P1-8 修复：优先读取环境变量 CHINA_WATCH_SUBMIT_URL（Docker 容器间通信用），
+    # 其次读取配置文件，最后回落本机地址。原实现只看配置，容器内配置缺失时
+    # 回落 http://127.0.0.1:5000 即容器自身，采集链路整体断开。
+    submit_ihub_url = (
+        os.environ.get('CHINA_WATCH_SUBMIT_URL')
+        or config.get('collector.submit_ihub_url', f'http://127.0.0.1:{DEFAULT_IHUB_PORT}')
+    )
     collector_tokens = config.get('intelligence_hub_web_service.collector.tokens')
     token = collector_tokens[0] if collector_tokens else DEFAULT_COLLECTOR_TOKEN
     crawl_context = CrawlContext(name, submit_ihub_url, token, governor)
@@ -53,9 +57,18 @@ def fetch_process_article(article: RssItem,
     # ---------------------------------------------------
     # TODO: If an article always convert fail. Need a special treatment.
 
-    raw_html = content['content']
+    raw_html = content.get('content') or ''
     if not raw_html:
-        raise ProcessSkip('Got empty content at fetch.')
+        # 区分抓取失败与真空页面：
+        # - 404/410（permanently_gone）或无错误信息的空内容 → 终态 skip；
+        # - 带错误信息（4xx/5xx/网络异常）的空内容 → fetch_error 可重试，
+        #   避免瞬时故障被治理层记成 SKIPPED 后永久不再抓。
+        errors = content.get('errors') or []
+        if isinstance(errors, str):
+            errors = [errors]
+        if content.get('permanently_gone') or not errors:
+            raise ProcessSkip('Got empty content at fetch.')
+        raise ProcessProblem('fetch_error', article.link)
 
     text = raw_html
     for scrubber in scrubbers:
@@ -152,11 +165,14 @@ def feeds_craw_flow(flow_name: str,
 
     # ----------------------------------------- Process Cached Data -----------------------------------------
 
-    context.submit_cached_data()
+    # 提交上一轮遗留的缓存数据；返回本轮已消费（尝试过提交）的缓存链接集合，
+    # 主循环据此跳过这些链接，保证每轮每条缓存数据只提交一次，不重复消费。
+    submitted_cache_urls = context.submit_cached_data() or set()
 
     # ------------------------------------------- The Main Process ------------------------------------------
 
-    with context.crawler_governor.schedule_pace(flow_name, DEFAULT_FEEDS_CRAWL_LOOP_DURATION, None):
+    # update_interval_s 传入值优先；为 None/0 时回落默认轮询周期
+    with context.crawler_governor.schedule_pace(flow_name, update_interval_s or DEFAULT_FEEDS_CRAWL_LOOP_DURATION, stop_event):
 
         for feed_name, feed_url in { **feeds, "cached": "" }.items():
 
@@ -190,6 +206,12 @@ def feeds_craw_flow(flow_name: str,
                 if not article.link:
                     context.logger.info(f'Got empty article link from feed: {feed_url}')
                     context.crawler_governor.reduce_round_step(group_path)
+                    continue
+
+                if article.link in submitted_cache_urls:
+                    # 本轮开头已从缓存尝试提交过该链接（成功或已重新入缓存），
+                    # 同轮不再重复抓取/重复提交，避免重复消费同一缓存数据。
+                    context.crawler_governor.skip_round_step(group_path)
                     continue
 
                 if not context.crawler_governor.should_crawl(article.link):

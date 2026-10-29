@@ -15,6 +15,14 @@ class ScraperResult(TypedDict):
     errors: List[str]
 
 
+# ScraperResult 的可选扩展字段（各实现可按需附加）：
+#   status_code: int        —— HTTP 响应状态码（如有）
+#   permanently_gone: bool  —— True 表示资源已永久消失（HTTP 404/410），
+#                              调用方应将其视为终态（skip），不再重试
+# 约定：抓取失败时 content 为空字符串，errors 必须非空并说明原因；
+#       这样上层流程才能区分"真空页面"（skip）与"抓取故障"（可重试）。
+
+
 def fetch_content(
     url: str,
     timeout_ms: int,

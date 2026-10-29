@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+# 实验性模块：当前未接入生产抓取链路，仅作技术验证保留。
 import asyncio
 from typing import List, Optional, TypedDict
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, JsonCssExtractionStrategy, CacheMode
@@ -13,20 +15,29 @@ async def _async_fetch(
 ) -> ScraperResult:
     result = {"content": "", "errors": []}
 
-    browser_config = BrowserConfig(
+    # proxy 允许为 None，按需组装 BrowserConfig 参数
+    browser_config_kwargs = dict(
         user_agent_mode="random",
         user_agent_generator_config={"device_type": "desktop"},
-        proxy_config={"server": proxy.get('http', '')},
         viewport={"width": 1280, "height": 720},
     )
+    if proxy:
+        browser_config_kwargs["proxy_config"] = {"server": proxy.get('http', '')}
 
-    schema = {"selector": "div.article", "fields": [...]}
-    run_config = CrawlerRunConfig(
-        extraction_strategy=JsonCssExtractionStrategy(schema),
-        cache_mode=CacheMode.BYPASS,
-    )
+    # 修复：原 schema 中 fields 为字面 Ellipsis（...），JsonCssExtractionStrategy 无法处理。
+    # 给出可工作的最小合法 schema（提取正文文本），调用方可通过 kwargs['schema'] 覆盖。
+    schema = kwargs.get('schema') or {
+        "selector": "body",
+        "fields": [{"name": "text", "type": "text"}]
+    }
 
     try:
+        browser_config = BrowserConfig(**browser_config_kwargs)
+        run_config = CrawlerRunConfig(
+            extraction_strategy=JsonCssExtractionStrategy(schema),
+            cache_mode=CacheMode.BYPASS,
+        )
+
         async with AsyncWebCrawler(browser_config=browser_config) as crawler:
             response = await crawler.arun(
                 url=url,

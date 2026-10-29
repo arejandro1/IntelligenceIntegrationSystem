@@ -76,6 +76,7 @@ class AsyncHubPostProcess(IHubPostProcess):
                 # Get data from queue with timeout to allow checking running flag
                 data = self.queue.get(timeout=1.0)
             except queue.Empty:
+                # 消费循环 1s 超时唤醒属正常节奏（检查 running 标志），非错误
                 continue
 
             try:

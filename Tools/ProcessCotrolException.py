@@ -1,3 +1,8 @@
+"""进程控制异常定义（Process Control Exceptions）。
+
+注意：`IntelligenceCrawler/` 子模块内存在同名内部副本，属其内部实现；
+主仓库代码一律从 `Tools.ProcessCotrolException` 导入，勿再引用子模块内副本。
+"""
 import os
 import inspect
 import datetime

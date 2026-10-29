@@ -1,3 +1,4 @@
+import copy
 from typing import Optional
 
 from CrawlerServiceEngine import ServiceContext
@@ -14,4 +15,4 @@ def module_init(service_context: ServiceContext):
 
 
 def start_task(stop_event):
-    if FLOW: FLOW.run_common_flow(CRAWLER_CONFIG.copy(), stop_event, global_site=False)
+    if FLOW: FLOW.run_common_flow(copy.deepcopy(CRAWLER_CONFIG), stop_event, global_site=False)

@@ -434,8 +434,9 @@ class MongoDBStorage:
                 try:
                     os.remove(temp_filepath)
                     logger.info(f"Cleaned up partial file: {temp_filepath}")
-                except OSError:
-                    pass
+                except OSError as e:
+                    # 清理失败不掩盖原始导出错误（上方已记录），残留文件由运维清理
+                    logger.debug(f"Cleanup partial file failed: {temp_filepath} ({e})")
 
             # 向上抛出异常，让调用者知道任务失败了
             raise

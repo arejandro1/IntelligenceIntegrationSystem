@@ -4,7 +4,6 @@
 #   - Implement CrawlPipeline's handlers                    #
 # --------------------------------------------------------- #
 
-import datetime
 import threading
 from uuid import uuid4
 from typing import Optional
@@ -56,7 +55,9 @@ def intelligence_crawler_result_handler(
             title=result.metadata.get('title', ''),
             authors=result.metadata.get('authors', []),
             content=result.markdown_content,
-            pub_time=result.metadata.get('date', datetime.datetime.now()),
+            # pub_time 提取不到就传 None，不再用当前时间伪造发布时间
+            # （CollectedData.pub_time 已允许 None）。
+            pub_time=result.metadata.get('date'),
             informant=url
         )
         context.submit_collected_data(group, collected_data)
@@ -64,9 +65,10 @@ def intelligence_crawler_result_handler(
         # Crawl session context will handle it.
         raise
     except Exception as e:
+        # 单篇数据异常（如 ValidationError）作为本篇终态：
+        # 记录后返回，不再向上 re-raise 中断整轮抓取。
         print(f"Build collected data fail: {e}")
-        # Handle exception outside.
-        raise
+        return
 
 
 def intelligence_crawler_exception_handler(
@@ -107,6 +109,8 @@ class CommonIntelligenceCrawlFlow:
                                            crawler_governor=self.crawl_context.crawler_governor)
 
         # TODO: Split and shorted the scope of scheduler.
+        # 透传 stop_event:热重载/关闭时 scheduler.pace 能提前打断等待,
+        # 避免外层 stop 超时放弃后 Playwright 浏览器等资源泄漏。
         with self.crawl_context.crawler_governor.schedule_pace(
-                f"{self.name}", DEFAULT_CRAWL_LOOP_DURATION, None):
+                f"{self.name}", DEFAULT_CRAWL_LOOP_DURATION, stop_event):
             drive_pipeline_batch(self.pipeline , local_crawler_config)

@@ -1,4 +1,5 @@
 import re
+import os
 import bcrypt
 import logging
 import sqlite3
@@ -20,10 +21,25 @@ class UserManager:
     USER_NAME_LENGTH = (3, 50)
     USER_NAME_PATTERN_RE = r'^[a-zA-Z0-9_\-]+$'
     USER_NAME_PATTERN_SQL = '[a-zA-Z0-9_-]'
+    # 密码策略：最少 8 字符，且必须同时包含字母和数字
+    PASSWORD_MIN_LENGTH = 8
 
     def __init__(self, db_path: str):
         self.db_path = db_path
         self.write_lock = threading.Lock()
+        # P0-2：打开默认认证库路径前执行旧库迁移（幂等）。
+        # - 仅当路径等于 GlobalConfig.DEFAULT_USER_DB_PATH 时迁移，
+        #   测试/自定义路径不受影响；
+        # - 迁移失败抛错（fail-fast），禁止静默新建空库导致账号丢失。
+        try:
+            from GlobalConfig import DEFAULT_USER_DB_PATH, migrate_legacy_user_db
+            if os.path.abspath(db_path) == os.path.abspath(DEFAULT_USER_DB_PATH):
+                migrate_legacy_user_db(db_path)
+        except RuntimeError:
+            raise
+        except Exception:
+            # GlobalConfig 不可用或非默认路径：跳过迁移，正常初始化
+            pass
         self._init_db()
 
     def _init_db(self):
@@ -100,9 +116,17 @@ class UserManager:
             conn.commit()
 
         except sqlite3.Error as e:
-            logger.error(f"Database initialization failed: {str(e)}")
+            # P0-2 修复：初始化失败（如目录只读无法建库/建表）必须抛错 fail-fast，
+            # 不得吞掉异常后以“看似正常”的状态运行——那会导致登录时才暴露问题，
+            # 且无法区分“配置问题”与“凭证错误”。启动失败信息中给出迁移指引。
+            raise RuntimeError(
+                f"认证数据库初始化失败（路径：{self.db_path}）：{e}。"
+                f"常见原因：所在目录只读（Docker 中 _config 默认只读挂载）。"
+                f"请将 Authentication.db 放到可写目录（默认 _data/），"
+                f"或设置 AUTH_DB_PATH 环境变量。") from e
         except Exception as e:
-            logger.error(f"Database initialization exception: {str(e)}")
+            raise RuntimeError(
+                f"认证数据库初始化异常（路径：{self.db_path}）：{e}") from e
         finally:
             if conn:
                 conn.close()
@@ -124,7 +148,7 @@ class UserManager:
                 if not user:
                     self._log_login_attempt(
                         conn, None, username, client_ip,
-                        hashlib.sha256(password.encode()).hexdigest(),
+                        None,
                         'FAILURE'
                     )
                     return False, "Invalid credentials"
@@ -134,7 +158,7 @@ class UserManager:
                 if not is_active:
                     self._log_login_attempt(
                         conn, user_id, username, client_ip,
-                        hashlib.sha256(password.encode()).hexdigest(),
+                        None,
                         'FAILURE'
                     )
                     return False, "Account disabled"
@@ -149,7 +173,7 @@ class UserManager:
                 else:
                     self._log_login_attempt(
                         conn, user_id, username, client_ip,
-                        hashlib.sha256(password.encode()).hexdigest(),
+                        None,
                         'FAILURE'
                     )
                     return False, "Invalid credentials"
@@ -222,6 +246,11 @@ class UserManager:
 
     def create_user(self, username: str, password: str, roles: list) -> Tuple[int, str]:
         result, reason = self._check_user_name(username)
+        if not result:
+            return UserManager.INVALID_USER_ID, reason
+
+        # 密码强度策略：弱口令直接拒绝创建
+        result, reason = self._check_password(password)
         if not result:
             return UserManager.INVALID_USER_ID, reason
 
@@ -608,6 +637,8 @@ class UserManager:
         return conn
 
     def _log_login_attempt(self, conn, user_id, username, client_ip, pwd_hash, result):
+        # 安全加固：绝不落库口令的任何哈希（含裸 SHA-256），防止弱口令离线爆破。
+        pwd_hash = None
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO login_log (user_id, username, client_ip, attempted_password_hash, result) "
@@ -638,3 +669,16 @@ class UserManager:
 
             return True, ''
         return False, 'invalid type'
+
+    def _check_password(self, password: str) -> Tuple[bool, str]:
+        """密码策略校验：最少 8 字符，且必须同时包含字母和数字。"""
+        if not isinstance(password, str) or not password:
+            return False, 'invalid password type'
+
+        if len(password) < self.PASSWORD_MIN_LENGTH:
+            return False, f'password too short (min {self.PASSWORD_MIN_LENGTH} chars)'
+
+        if not re.search(r'[a-zA-Z]', password) or not re.search(r'\d', password):
+            return False, 'password must contain both letters and digits'
+
+        return True, ''

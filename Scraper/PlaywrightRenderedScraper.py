@@ -15,6 +15,11 @@ def fetch_content(
     :param url: The same as base.
     :param timeout_ms: The same as base.
     :param proxy: Format: The same as base.
+    :param kwargs: 透传到 request_by_browser（如 headless/locale/timezone_id/
+        ignore_https_errors/allow_private_network）。
+        批次五：ignore_https_errors 默认 False（启用 HTTPS 证书校验）；
+        后续导航/重定向/子请求的目标地址由 BrowserRequestGuard 拦截校验
+        （见 request_by_browser），本渲染入口自动获得同等防护。
     :return: The same as base.
     """
 
@@ -22,8 +27,14 @@ def fetch_content(
         if not response:
             return {'content': '', "errors": ['No response']}
 
+        # 404/410 标记永久消失，供上层视为终态 skip
+        if response.status in (404, 410):
+            return {'content': '', "errors": [f'HTTP {response.status}: 资源已永久消失'],
+                    'status_code': response.status, 'permanently_gone': True}
+
         if response.status >= 400:
-            return {'content': '', "errors": [f'HTTP response: {response.status}']}
+            return {'content': '', "errors": [f'HTTP response: {response.status}'],
+                    'status_code': response.status}
 
         error_msgs = []
 
@@ -45,7 +56,7 @@ def fetch_content(
         return {'content': page_content, "errors": error_msgs}
 
     try:
-        result = request_by_browser(url, handler, timeout_ms, proxy)
+        result = request_by_browser(url, handler, timeout_ms, proxy, **kwargs)
         return result
     except Exception as e:
         print(traceback.format_exc())

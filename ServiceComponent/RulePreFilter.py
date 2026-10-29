@@ -34,9 +34,12 @@ class RulePreFilter:
         Level 1 参数校验（UUID / source / content / title）
         Level 2 内容长度与标题要求
         Level 3 拒绝模式 / 元数据模式
+
+        兼容字段大小写：优先大写 UUID，回退小写 uuid；
+        source 兼容 'source' 与 'source_id'。
         """
-        uuid_val = str(raw_data.get('UUID', '') or '')
-        source_id = str(raw_data.get('source', '') or '')
+        uuid_val = str(raw_data.get('UUID', '') or raw_data.get('uuid', '') or '')
+        source_id = str(raw_data.get('source', '') or raw_data.get('source_id', '') or '')
         title = str(raw_data.get('title', '') or '')
         content = str(raw_data.get('content', '') or '')
 
@@ -49,10 +52,16 @@ class RulePreFilter:
                 decision='RULE_REJECTED', matched_rule='PARAM_UUID_MISSING',
                 reason='缺少 UUID', content_hash=content_hash)
         if not source_id:
-            return PreFilterResult(
-                original_uuid=uuid_val, source_id=source_id,
-                decision='RULE_REJECTED', matched_rule='PARAM_SOURCE_MISSING',
-                reason='缺少 source', content_hash=content_hash)
+            # M3 接线新增：现有爬虫不传 source 字段，按 informant 域名反查注册表兜底。
+            # 反查成功视同显式 source 继续后续校验；失败（含域名歧义）保持 fail-closed 拒绝。
+            entry = self.registry.resolve_by_informant(str(raw_data.get('informant', '') or ''))
+            if entry is not None:
+                source_id = entry.source_id
+            else:
+                return PreFilterResult(
+                    original_uuid=uuid_val, source_id=source_id,
+                    decision='RULE_REJECTED', matched_rule='PARAM_SOURCE_MISSING',
+                    reason='缺少 source 且无法按 informant 域名反查来源', content_hash=content_hash)
         if not self.registry.exists(source_id):
             return PreFilterResult(
                 original_uuid=uuid_val, source_id=source_id,

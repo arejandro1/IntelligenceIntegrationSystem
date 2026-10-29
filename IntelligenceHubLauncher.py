@@ -6,6 +6,7 @@ Function: Starts the IntelligenceHubLauncher application using either Waitress o
 Design: Uses adapter pattern to support multiple WSGI servers with common interface.
 """
 
+import os
 import sys
 import time
 import logging
@@ -14,7 +15,14 @@ import threading
 import platform
 import subprocess
 from abc import ABC, abstractmethod
-from IntelligenceHubStartup import wsgi_app
+
+from GlobalConfig import LOG_PATH
+# P1-7 修复：删除顶层导入 IntelligenceHubStartup。
+# 该模块在模块级执行 run()（初始化整个 Hub：AI 线程、定时任务等）。
+# 顶层导入 + Gunicorn worker 再 import = 两个进程各建一份 Hub，
+# 双份 AI 线程重复烧 token、双份定时任务。
+# 现在：仅 Waitress/Flask 适配器在 start_server() 时惰性导入；
+# Gunicorn 路径由 gunicorn 子进程自行 import（天然单实例）。
 
 # ==================== CONFIGURATION SECTION ====================
 
@@ -38,17 +46,32 @@ MANAGER_LOG = './server_manager.log'  # Manager application log
 # Application configuration
 FLASK_APP_MODULE = "IntelligenceHubStartup"  # Your Python file name
 FLASK_APP_INSTANCE = "wsgi_app"  # Your Flask app instance name
+# P0 部署缺陷修复：业务路由注册在 create_wsgi_app() 中（模块级 wsgi_app 仅含 /static）。
+# gunicorn 直接加载 wsgi_app 会导致全部业务路由 404，故改用 app factory 语法
+# "module:create_wsgi_app()"（gunicorn 支持 factory 调用）。
+WSGI_APP_FACTORY = f"{FLASK_APP_MODULE}:create_wsgi_app()"
 
 
 # ================== Health check configuration ==================
 
-HEALTH_CHECK_URL = "http://127.0.0.1:5000/maintenance/ping"
+# 探活端点分工（P0-1 修订）：
+# - HEALTH_CHECK_URL 默认带 deep=1（业务就绪探活）：检查按运行模式的
+#   消费者线程（legacy AI 线程 / Drainer 线程 / 无消费者为预期状态）、
+#   后处理线程、MongoDB 可用性与队列积压；等待非高峰/预算耗尽/DRY_RUN
+#   不判故障。全部本地检查，短超时，不调用付费 API。
+# - Docker HEALTHCHECK 使用浅探活 /maintenance/ping（进程存活），
+#   与本脚本的 deep 探活分工明确，避免只采集/DRY_RUN/Drainer 模式下
+#   的重启循环。
+HEALTH_CHECK_URL = "http://127.0.0.1:5000/maintenance/ping?deep=1"
 HEALTH_CHECK_TIMEOUT = 10
 CHECK_INTERVAL = 30
 RESTART_COOLDOWN = 300  # Seconds between restart attempts
+# 深度健康检查需连续失败达到阈值才判定服务异常，避免单次抖动/慢响应触发误重启
+HEALTH_CHECK_FAIL_THRESHOLD = 3
 
 # Restart configuration
 MAX_RESTART_ATTEMPTS = 5
+RESTART_WINDOW_SEC = 3600  # 滑动窗口：1 小时内最多重启 MAX_RESTART_ATTEMPTS 次，超限退出交外部 supervisor
 
 # ======================= Log configuration =======================
 
@@ -72,6 +95,8 @@ class ServerAdapter(ABC):
         self.process = None
         self.server_thread = None
         self.server_running = False
+        # 保存可停止的底层 server 对象（werkzeug make_server / waitress create_server）
+        self._server = None
         self.logger = logging.getLogger(self.__class__.__name__)
 
     @abstractmethod
@@ -115,7 +140,9 @@ class FlaskAppManager(ServerAdapter):
         super().__init__(host, port, workers, threads)
         self.host = host
         self.port = port
-        self.debug = True  # Flask development server typically runs in debug mode
+        # 调试模式默认关闭，避免未捕获异常暴露 Werkzeug 交互式调试器。
+        # 仅在显式设置 FLASK_DEBUG=1/true/yes/on 时开启（仅限开发环境）。
+        self.debug = os.getenv('FLASK_DEBUG', '').strip().lower() in ('1', 'true', 'yes', 'on')
         self.logger = logging.getLogger("FlaskAppManager")
 
     def start_server(self):
@@ -133,18 +160,24 @@ class FlaskAppManager(ServerAdapter):
             # Run Flask server in a separate thread
             def run_flask_server():
                 try:
-                    # Import and run the Flask app directly
-                    from IntelligenceHubStartup import wsgi_app
-                    wsgi_app.run(
-                        host=self.host,
-                        port=self.port,
-                        debug=self.debug,
-                        use_reloader=False  # Disable reloader to avoid subprocess creation
+                    # P0 部署缺陷修复：经 create_wsgi_app() 引导后再 serve
+                    from IntelligenceHubStartup import create_wsgi_app
+                    app = create_wsgi_app()
+                    # 用 make_server 持有 server 对象，stop_server() 可调用 shutdown()
+                    # 释放端口，避免旧线程残留导致重启失败（Address already in use）。
+                    from werkzeug.serving import make_server
+                    self._server = make_server(
+                        self.host,
+                        self.port,
+                        app,
+                        threaded=True,
                     )
+                    self._server.serve_forever()
                 except Exception as e:
                     self.logger.error(f"Flask server error: {str(e)}")
                 finally:
                     self.server_running = False
+                    self._server = None
 
             self.server_thread = threading.Thread(target=run_flask_server)
             self.server_thread.daemon = True
@@ -169,10 +202,18 @@ class FlaskAppManager(ServerAdapter):
     def stop_server(self):
         """
         Stop Flask development server.
-        Note: Flask development server doesn't have a clean shutdown API,
-        so we rely on the daemon thread property for termination.
+        通过 make_server 返回的 server.shutdown() 使 serve_forever() 退出，
+        并 join 等待旧线程结束，确保端口被释放后才允许重启。
         """
         self.server_running = False
+        server = self._server
+        if server is not None:
+            try:
+                server.shutdown()
+            except Exception as e:
+                self.logger.warning(f"Flask server shutdown error: {str(e)}")
+        if self.server_thread is not None and self.server_thread.is_alive():
+            self.server_thread.join(timeout=5)
         self.logger.info("Flask development server stopped")
 
     def get_server_info(self):
@@ -199,11 +240,26 @@ class WaitressServer(ServerAdapter):
             # Run Waitress in a separate thread
             def run_waitress():
                 try:
-                    serve(wsgi_app, host=self.host, port=self.port, threads=self.threads)
+                    # P1-7 修复：惰性导入，避免模块导入阶段初始化整个 Hub
+                    # P0 部署缺陷修复：必须经 create_wsgi_app() 引导（注册全部业务路由），
+                    # 直接 import wsgi_app 只有 /static 路由。
+                    from IntelligenceHubStartup import create_wsgi_app
+                    app = create_wsgi_app()
+                    # 用 create_server + run() 两步式启动，便于 stop_server() 调用
+                    # close() 停止监听并释放端口。
+                    from waitress.server import create_server
+                    self._server = create_server(
+                        app,
+                        host=self.host,
+                        port=self.port,
+                        threads=self.threads,
+                    )
+                    self._server.run()
                 except Exception as e:
                     self.logger.error(f"Waitress server error: {str(e)}")
                 finally:
                     self.server_running = False
+                    self._server = None
 
             self.server_thread = threading.Thread(target=run_waitress)
             self.server_thread.daemon = True
@@ -224,8 +280,15 @@ class WaitressServer(ServerAdapter):
 
     def stop_server(self):
         """Stop Waitress server"""
-        # Waitress runs in a thread, so we just mark it as stopped
         self.server_running = False
+        server = self._server
+        if server is not None:
+            try:
+                server.close()
+            except Exception as e:
+                self.logger.warning(f"Waitress server close error: {str(e)}")
+        if self.server_thread is not None and self.server_thread.is_alive():
+            self.server_thread.join(timeout=5)
         self.logger.info("Waitress server stopped")
 
     def get_server_info(self):
@@ -238,6 +301,7 @@ class GunicornServer(ServerAdapter):
 
     def start_server(self):
         """Start Gunicorn server using subprocess"""
+        self._log_file = None
         try:
             # Build Gunicorn command
             gunicorn_cmd = [
@@ -248,17 +312,23 @@ class GunicornServer(ServerAdapter):
                 "--access-logfile", ACCESS_LOG,
                 "--error-logfile", ERROR_LOG,
                 "--pythonpath", ".",
-                f"{FLASK_APP_MODULE}:{FLASK_APP_INSTANCE}"
+                WSGI_APP_FACTORY
             ]
 
             self.logger.info(f"Starting Gunicorn server with command: {' '.join(gunicorn_cmd)}")
             self.logger.info(f"Gunicorn configuration: {self.get_server_info()}")
 
+            # P0 修复：stdout/stderr 不能用 PIPE（无人读取时管道缓冲区写满会堵死子进程）。
+            # 改为追加模式重定向到 _log 下的日志文件句柄。
+            os.makedirs(LOG_PATH, exist_ok=True)
+            self._log_file = open(
+                os.path.join(LOG_PATH, 'gunicorn_child.log'), 'a', encoding='utf-8', buffering=1)
+
             # Start Gunicorn process
             self.process = subprocess.Popen(
                 gunicorn_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=self._log_file,
+                stderr=subprocess.STDOUT,
                 text=True
             )
 
@@ -271,6 +341,13 @@ class GunicornServer(ServerAdapter):
 
         except Exception as e:
             self.logger.error(f"Failed to start Gunicorn: {str(e)}")
+            if self._log_file:
+                try:
+                    self._log_file.close()
+                except Exception as e:
+                    # 关闭失败不影响启动失败的主流程（句柄由进程退出回收）
+                    self.logger.debug(f"Close log file after Gunicorn start failed: {e}")
+                self._log_file = None
             return False
 
     def stop_server(self):
@@ -290,6 +367,15 @@ class GunicornServer(ServerAdapter):
                 self.logger.error(f"Error terminating Gunicorn process: {str(e)}")
             finally:
                 self.server_running = False
+                # 关闭子进程输出重定向的日志文件句柄
+                log_file = getattr(self, '_log_file', None)
+                if log_file:
+                    try:
+                        log_file.close()
+                    except Exception as e:
+                        # 关闭失败不影响停止流程（句柄由进程退出回收）
+                        self.logger.debug(f"Close log file during Gunicorn stop failed: {e}")
+                    self._log_file = None
         else:
             self.logger.info("Gunicorn server stopped")
 
@@ -304,8 +390,10 @@ class ServerManager:
     def __init__(self):
         self.logger = None
         self.server = None
-        self.restart_count = 0
+        # 滑动窗口重启计数：记录最近 RESTART_WINDOW_SEC 内的重启时间戳
+        self.restart_times = []
         self.last_restart_time = 0
+        self.health_fail_count = 0  # 连续健康检查失败次数
         self.setup_logging()
         self.determine_server_type()
 
@@ -369,7 +457,7 @@ class ServerManager:
             return False
 
     def restart_server(self):
-        """Restart the server with cooldown and attempt limits"""
+        """Restart the server with cooldown and sliding-window attempt limits"""
         current_time = time.time()
 
         # Check restart cooldown
@@ -378,10 +466,18 @@ class ServerManager:
             self.logger.warning(f"Still in restart cooldown period, can restart in {remaining} seconds")
             return False
 
-        # Check maximum attempts
-        if self.restart_count >= MAX_RESTART_ATTEMPTS:
-            self.logger.error(f"Maximum restart attempts ({MAX_RESTART_ATTEMPTS}) reached")
-            return False
+        # 滑动窗口上限：只统计最近 RESTART_WINDOW_SEC 内的重启次数，
+        # 避免旧实现中计数永不衰减、累计 5 次后永久放弃的问题。
+        self.restart_times = [t for t in self.restart_times
+                              if current_time - t < RESTART_WINDOW_SEC]
+        if len(self.restart_times) >= MAX_RESTART_ATTEMPTS:
+            # 达到上限说明服务持续异常，进程内再重启无意义。
+            # 以非零码退出主循环，交给 systemd Restart 策略 / 外部 supervisor 处理，
+            # 而不是每 30 秒空打 warning。
+            self.logger.error(
+                f"滑动窗口（{RESTART_WINDOW_SEC}s）内重启已达上限 {MAX_RESTART_ATTEMPTS} 次，"
+                f"服务持续异常，主程序退出（exit 1），交由外部 supervisor 处理。")
+            sys.exit(1)
 
         self.logger.info("Attempting to restart server...")
 
@@ -391,9 +487,10 @@ class ServerManager:
         # Start new server
         success = self.server.start_server()
         if success:
-            self.restart_count += 1
+            self.restart_times.append(current_time)
             self.last_restart_time = current_time
-            self.logger.info(f"Restart successful (attempt {self.restart_count})")
+            self.logger.info(
+                f"Restart successful (window count {len(self.restart_times)}/{MAX_RESTART_ATTEMPTS})")
         else:
             self.logger.error("Restart failed")
 
@@ -405,34 +502,51 @@ class ServerManager:
         self.logger.info(f"Platform: {platform.system()} {platform.release()}")
         self.logger.info(f"Health check URL: {HEALTH_CHECK_URL}")
         self.logger.info(f"Check interval: {CHECK_INTERVAL} seconds")
-        self.logger.info(f"Max restart attempts: {MAX_RESTART_ATTEMPTS}")
+        self.logger.info(f"Max restart attempts: {MAX_RESTART_ATTEMPTS} per {RESTART_WINDOW_SEC}s sliding window")
         self.logger.info(f"Restart cooldown: {RESTART_COOLDOWN} seconds")
 
         # Initial startup
         if not self.server.start_server():
-            self.logger.error("Initial startup failed, script exiting")
-            return
+            # 初始启动失败必须以非零码退出，systemd/外部 supervisor 才能感知并介入
+            self.logger.error("Initial startup failed, script exiting with code 1")
+            sys.exit(1)
 
         # Main monitoring loop
         try:
             while True:
-                # For Gunicorn, check if process is still running
-                if isinstance(self.server, GunicornServer) and self.server.process:
-                    if self.server.process.poll() is not None:
-                        exit_code = self.server.process.poll()
-                        self.logger.error(f"Server process exited with code: {exit_code}")
-                        self.restart_server()
+                # 深度健康检查：连续失败达到阈值才判定服务异常（避免单次抖动误重启）
+                if not self.check_health():
+                    self.health_fail_count += 1
+                    self.logger.warning(
+                        f"Health check failed ({self.health_fail_count}/{HEALTH_CHECK_FAIL_THRESHOLD})")
+                else:
+                    self.health_fail_count = 0
+                health_broken = self.health_fail_count >= HEALTH_CHECK_FAIL_THRESHOLD
 
-                # For Waitress, check if thread is still alive
-                if isinstance(self.server, WaitressServer) and self.server.server_thread:
-                    if not self.server.server_thread.is_alive():
+                if isinstance(self.server, GunicornServer):
+                    # 子进程模式：重启会拉起全新进程重新 import IntelligenceHubStartup，
+                    # Hub 可以真正重建，因此允许进程内重启。
+                    process_dead = bool(self.server.process) and self.server.process.poll() is not None
+                    if process_dead:
+                        self.logger.error(f"Server process exited with code: {self.server.process.poll()}")
+                    if process_dead or health_broken:
+                        self.restart_server()
+                        self.health_fail_count = 0
+                else:
+                    # 进程内模式（Waitress/Flask）：Hub 在 IntelligenceHubStartup 模块级
+                    # run() 中初始化，restart 时 `from IntelligenceHubStartup import wsgi_app`
+                    # 会命中 sys.modules 缓存，Hub 并不会重建——进程内“重启”是假重启。
+                    # 因此选择更简单可靠的方案：检测到线程死亡或深度健康检查持续失败时，
+                    # 以非零码退出整进程，交给 systemd/外部 supervisor 重启。
+                    # 旧 Hub 的 shutdown 由 IntelligenceHubStartup 注册的 atexit 钩子完成。
+                    thread_dead = bool(self.server.server_thread) and not self.server.server_thread.is_alive()
+                    if thread_dead:
                         self.logger.error("Server thread has stopped")
-                        self.restart_server()
-
-                # Optional: Health check (uncomment if needed)
-                # if not self.check_health():
-                #     self.logger.warning("Health check failed, attempting restart")
-                #     self.restart_server()
+                    if thread_dead or health_broken:
+                        self.logger.error(
+                            "进程内模式无法安全重建 Hub（sys.modules 缓存），"
+                            "整进程退出（exit 1）交由外部 supervisor 重启。")
+                        sys.exit(1)
 
                 # Wait for next check
                 time.sleep(CHECK_INTERVAL)

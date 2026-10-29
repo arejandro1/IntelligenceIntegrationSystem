@@ -70,6 +70,7 @@ class _ContentHistoryManager:
                 with sqlite3.connect(self.db_path, timeout=10) as conn:
                     self._process_task(task, conn)
             except queue.Empty:
+                # 消费循环 2s 超时唤醒属正常节奏（检查 stop_event），非错误
                 continue
             except Exception as e:
                 logger.error(f"Worker error: {e}")

@@ -20,7 +20,7 @@ def start_task(stop_event):
     # It's OK to make a loop here. But don't forget to check stop_event.
     # Actually the service will drive this function in an infinite loop.
     for _ in range(0, 10):
-        if not stop_event.is_set():
+        if stop_event.is_set():
             break
         print("Example task is running...")
         time.sleep(5)

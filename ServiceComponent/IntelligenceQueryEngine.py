@@ -19,8 +19,10 @@ logger = logging.getLogger(__name__)
 
 
 class IntelligenceQueryEngine:
-    def __init__(self, db: MongoDBStorage):
+    def __init__(self, db: MongoDBStorage, max_time_ms: int = 10000):
         self.__mongo_db = db
+        # 慢查询保护:find / count_documents 的单次执行时间上限(毫秒),可通过构造参数调整
+        self._max_time_ms = max_time_ms
 
     def get_intelligence(self, _uuid: Union[str, List[str]], light_weight: bool = False) -> Union[Optional[dict], List[dict]]:
         """Retrieve single intelligence entry by UUID
@@ -108,13 +110,15 @@ class IntelligenceQueryEngine:
 
         try:
             # Get total document count
-            total_count = collection.count_documents({})
+            total_count = collection.count_documents({}, maxTimeMS=self._max_time_ms)
 
             # Find the newest document as base reference
             newest_doc = collection.find_one(
                 filter={},
                 # TODO: Temporary hardcoded.
-                sort=[("APPENDIX.__TIME_ARCHIVED__", pymongo.DESCENDING)]
+                # 加 _id 次级排序:归档时间相同时保证结果确定
+                sort=[("APPENDIX.__TIME_ARCHIVED__", pymongo.DESCENDING), ("_id", pymongo.DESCENDING)],
+                max_time_ms=self._max_time_ms
             )
 
             base_uuid = newest_doc["UUID"] if newest_doc else None
@@ -232,7 +236,7 @@ class IntelligenceQueryEngine:
 
             # Execute query and return results with limit
             data = self.execute_query(collection, query, skip=skip, limit=limit)
-            total = collection.count_documents(query)
+            total = collection.count_documents(query, maxTimeMS=self._max_time_ms)
 
             return data, total
 
@@ -303,13 +307,6 @@ class IntelligenceQueryEngine:
         if threshold is not None or threshold_max is not None:
             v1_score_field = f"APPENDIX.{APPENDIX_MAX_RATE_SCORE}"
             v2_score_field = f"APPENDIX.{APPENDIX_TOTAL_SCORE}"
-            score_conds = []
-            if threshold is not None:
-                score_conds.append({v1_score_field: {"$gte": threshold}})
-                score_conds.append({v2_score_field: {"$gte": threshold}})
-            if threshold_max is not None:
-                score_conds.append({v1_score_field: {"$lte": threshold_max}})
-                score_conds.append({v2_score_field: {"$lte": threshold_max}})
             # v1 和 v2 的分数是互斥的，用 $or 组合低界，$and 组合高界
             # 最终条件：((v1>=min OR v2>=min) AND (v1<=max OR v2<=max))
             low_conds = []
@@ -433,16 +430,20 @@ class IntelligenceQueryEngine:
             return []
 
     def count_documents(self, _filter: dict) -> int:
+        """
+        统计匹配过滤条件的文档数量。
+
+        错误契约:查询失败时记录日志并原样抛出异常,不再返回 -1
+        (-1 与真实的 "0 条" 无法区分)。调用方(如 IntelligenceHub.count_documents
+        及其 RPC 层)需自行捕获并区分 "查询失败" 与 "空结果"。
+        """
         try:
             collection = self.__mongo_db.collection
-            results = collection.count_documents(_filter)
+            results = collection.count_documents(_filter, maxTimeMS=self._max_time_ms)
             return results
-        except ValueError:
-            logger.error("Invalid time format. Please use ISO format (e.g., '2024-01-01T00:00:00Z')")
-            return -1
         except Exception as e:
-            logger.error(f"Error processing request: {str(e)}")
-            return -1
+            logger.error(f"Error processing count_documents request: {str(e)}")
+            raise
 
     def get_latest_archive_timestamp(self) -> Optional[float]:
         """
@@ -460,7 +461,8 @@ class IntelligenceQueryEngine:
             latest_record = collection.find_one(
                 {},
                 projection={f"APPENDIX.{APPENDIX_TIME_ARCHIVED}": 1},
-                sort=[(f"APPENDIX.{APPENDIX_TIME_ARCHIVED}", pymongo.DESCENDING)]
+                sort=[(f"APPENDIX.{APPENDIX_TIME_ARCHIVED}", pymongo.DESCENDING), ("_id", pymongo.DESCENDING)],
+                max_time_ms=self._max_time_ms
             )
 
             if latest_record:
@@ -506,7 +508,9 @@ class IntelligenceQueryEngine:
 
         Notes:
             - Single-condition inputs return directly without logical operator wrapping.
-            - Dot-notated fields are expanded into nested documents (e.g., "x.y.z" → {"x": {"y": {"z": value}}}).
+            - 嵌套字段保持 MongoDB 点路径(dot notation)查询键原样下发,
+              不再展开为嵌套文档(展开写法在条件为 {"$gte": x} 等操作符字典时语义错误:
+              会被当作对子文档的等值匹配而非范围查询)。
         """
         if operator not in ["$and", "$or"]:
             raise ValueError("Operator must be '$and' or '$or'")
@@ -514,17 +518,9 @@ class IntelligenceQueryEngine:
         # 处理嵌套字段和操作符
         condition_list = []
         for field_path, condition in conditions.items():
-            # 处理嵌套字段（使用MongoDB的点表示法）
-            if "." in field_path:
-                field_parts = field_path.split(".")
-                # 构建嵌套查询条件
-                nested_cond = {f"{field_parts[-1]}": condition}
-                for part in reversed(field_parts[:-1]):
-                    nested_cond = {part: nested_cond}
-                condition_list.append(nested_cond)
-            else:
-                # 直接字段查询
-                condition_list.append({field_path: condition})
+            # 修正:嵌套字段(含 "." 的路径)直接作为点路径查询键,
+            # 例如 "a.b.c" -> {"a.b.c": cond},而不是 {"a": {"b": {"c": cond}}}。
+            condition_list.append({field_path: condition})
 
         # 组合所有条件
         if not condition_list:
@@ -591,19 +587,32 @@ class IntelligenceQueryEngine:
         domain_list = [d.strip().lower() for d in domain_list if d.strip()]
         if not domain_list:
             return {}
+        # 对用户输入做 re.escape，防止正则注入与 ReDoS
         if len(domain_list) == 1:
-            return {"INFORMANT": {"$regex": domain_list[0], "$options": "i"}}
-        return {"$or": [{"INFORMANT": {"$regex": d, "$options": "i"}} for d in domain_list]}
+            return {"INFORMANT": {"$regex": re.escape(domain_list[0]), "$options": "i"}}
+        return {"$or": [{"INFORMANT": {"$regex": re.escape(d), "$options": "i"}} for d in domain_list]}
 
     def build_geography_condition(self, regions: Union[str, List[str]]) -> dict:
-        """构建地理区域查询条件。GEOGRAPHY 为字符串字段，支持精确或多值（OR 关系）。"""
-        region_list = [regions] if isinstance(regions, str) else regions
-        region_list = [r.strip() for r in region_list if r.strip()]
+        """构建地理区域查询条件。GEOGRAPHY 为字符串字段，支持精确或多值（OR 关系）。
+
+        兼容性说明:GEOGRAPHY 字段由 LLM 生成,多国家可能用逗号/分号/空格等
+        分隔(如 "美国;日本" 或 "美国 日本")。因此:
+        1) 调用方传入的查询串同样先按分隔符拆分为国家名列表;
+        2) 多值合并为单一 alternation 正则做子串匹配,不依赖存储侧的具体分隔符。
+        """
+        raw_list = [regions] if isinstance(regions, str) else regions
+        # 拆分逗号/分号/顿号/空白等分隔符(中英文),过滤空段
+        region_list = []
+        for r in raw_list:
+            region_list.extend(p for p in re.split(r"[,;、，；\s]+", r) if p)
+        region_list = [r.strip() for r in region_list if r and r.strip()]
         if not region_list:
             return {}
+        # 对用户输入做 re.escape，防止正则注入与 ReDoS
+        pattern = "|".join(re.escape(r) for r in region_list)
         if len(region_list) == 1:
-            return {"GEOGRAPHY": {"$regex": region_list[0], "$options": "i"}}
-        return {"$or": [{"GEOGRAPHY": {"$regex": r, "$options": "i"}} for r in region_list]}
+            return {"GEOGRAPHY": {"$regex": pattern, "$options": "i"}}
+        return {"GEOGRAPHY": {"$regex": f"(?:{pattern})", "$options": "i"}}
 
     def get_source_domains(self, limit: int = 200) -> List[dict]:
         """
@@ -654,15 +663,22 @@ class IntelligenceQueryEngine:
 
     def build_keyword_or_condition(self, keywords: str) -> dict:
         cleaned_keywords = self.sanitize_keywords(keywords)
+        # 修复:无有效关键词时返回 {},避免生成非法的 {"$or": []}
+        # (空 $or 在 MongoDB 中语义非法/匹配不到任何文档)
+        if not cleaned_keywords:
+            return {}
         # 平铺所有字段条件（无需二维列表）
         conditions = []
         for kw in cleaned_keywords:
+            # ArchivedData 顶层字段(AI 提取结果)
             conditions.append({"EVENT_TITLE": {"$regex": kw, "$options": "i"}})
             conditions.append({"EVENT_BRIEF": {"$regex": kw, "$options": "i"}})
             conditions.append({"EVENT_TEXT": {"$regex": kw, "$options": "i"}})
-            conditions.append({"RAW_DATA.EVENT_TITLE": {"$regex": kw, "$options": "i"}})
-            conditions.append({"RAW_DATA.EVENT_BRIEF": {"$regex": kw, "$options": "i"}})
-            conditions.append({"RAW_DATA.EVENT_TEXT": {"$regex": kw, "$options": "i"}})
+            # P5 修复:RAW_DATA 存的是 CollectedData,其字段为 title/content,
+            # 而非 EVENT_TITLE/EVENT_BRIEF/EVENT_TEXT。原代码查询不存在的字段,
+            # 既无法命中又白付 3 条正则全表扫描。
+            conditions.append({"RAW_DATA.title": {"$regex": kw, "$options": "i"}})
+            conditions.append({"RAW_DATA.content": {"$regex": kw, "$options": "i"}})
         return {"$or": conditions}  # 匹配任一条件
 
     def build_keyword_and_condition(self, keywords: str) -> dict:
@@ -690,8 +706,15 @@ class IntelligenceQueryEngine:
         # 分割关键词并移除空值
         keywords = [kw.strip() for kw in keywords.split() if kw.strip()]
 
-        # 转义特殊字符并添加边界匹配
-        return [r'\b' + re.escape(kw) + r'\b' for kw in keywords]
+        # P5 修复:\b 词边界对中文(CJK)无效,会导致中文关键词永远匹配不到。
+        # 仅当关键词为纯 ASCII 字母数字时才加 \b;含 CJK 时直接子串匹配。
+        def _build_kw(k: str) -> str:
+            escaped = re.escape(k)
+            # 含 CJK 字符(中日韩统一表意文字及扩展)时不加 \b
+            if re.search(r'[\u3000-\u9fff\uf900-\ufaff]', k):
+                return escaped
+            return r'\b' + escaped + r'\b'
+        return [_build_kw(kw) for kw in keywords]
 
     def execute_query(
             self,

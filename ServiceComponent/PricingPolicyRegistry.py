@@ -3,9 +3,12 @@
 PricingPolicyRegistry 计费政策注册表（M3）
 维护各模型的基准单价，计算调用费用。价格、政策版本、生效日期必须配置化。
 """
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -44,7 +47,15 @@ class PricingPolicyRegistry:
 
     def calculate_cost(self, model_name: str, input_tokens: int, output_tokens: int, is_peak: bool) -> float:
         pricing = self.get_pricing(model_name)
-        if not pricing: return 0.0
+        if not pricing:
+            # P8 修复:未知 model 原本静默返回 0,等于把真实调用记成免费,
+            # 会导致费用台账严重低估。此处记 error 告警,仍返回 0 以不阻断流程,
+            # 但运维可通过日志发现未配置价格的模型。
+            logger.error(
+                f"[PricingPolicy] 未知模型 '{model_name}' 无价格配置,本次调用费用记为 0(可能低估)。"
+                f"请尽快在 PricingPolicyRegistry 中补充该模型的价格。"
+            )
+            return 0.0
         base = pricing.calculate_cost(input_tokens, output_tokens)
         multiplier = self.peak_multiplier if is_peak else self.off_peak_multiplier
         return round(base * multiplier, 6)

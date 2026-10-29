@@ -1,18 +1,87 @@
 import os
+import re
 import hashlib
+import html
 import markdown
 
+# 允许的 HTML 标签白名单（markdown 渲染结果消毒用）
+_ALLOWED_TAGS = {
+    "p", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6",
+    "strong", "em", "b", "i", "u", "s", "del", "ins", "sub", "sup",
+    "ul", "ol", "li", "dl", "dt", "dd", "blockquote", "pre", "code",
+    "a", "img", "table", "thead", "tbody", "tfoot", "tr", "th", "td",
+    "span", "div", "figure", "figcaption",
+}
+# 允许的标签 → 允许的属性（仅安全属性）
+_ALLOWED_ATTRS = {
+    "a": {"href", "title"},
+    "img": {"src", "alt", "title", "width", "height"},
+    "code": {"class"},
+    "span": {"class"},
+    "div": {"class"},
+    "th": {"align"},
+    "td": {"align"},
+}
 
-def generate_html_from_markdown(md_file_path: str) -> str:
+_TAG_RE = re.compile(r"<\s*(/?)\s*([a-zA-Z][a-zA-Z0-9-]*)([^>]*)>")
+
+def sanitize_html_content(raw_html: str) -> str:
+    """
+    对 markdown 生成的 HTML 做白名单消毒：
+    - 移除 script/style/iframe/object/embed/form 等危险标签。
+    - 标签属性仅保留白名单内安全属性，并转义属性值。
+    - 转义残留的 < > 防止标签走私。
+    """
+    def _sanitize_attrs(tag: str, attrs_raw: str) -> str:
+        tag = tag.lower()
+        allowed = _ALLOWED_ATTRS.get(tag, set())
+        kept = []
+        # 匹配 attrs: name="value" 或 name='value'
+        for m in re.finditer(r"([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*(\"[^\"]*\"|'[^']*')", attrs_raw):
+            name, value = m.group(1).lower(), m.group(2)
+            if name not in allowed:
+                continue
+            if name.startswith("on"):
+                continue
+            value = html.escape(value[1:-1], quote=True)
+            kept.append(f'{name}="{value}"')
+        return (" " + " ".join(kept)) if kept else ""
+
+    def _replace(m: re.Match) -> str:
+        closing, tag, attrs_raw = m.group(1), m.group(2).lower(), m.group(3)
+        if tag in _ALLOWED_TAGS:
+            if closing:
+                return f"</{tag}>"
+            return f"<{tag}{_sanitize_attrs(tag, attrs_raw)}>"
+        # 未知/危险标签：保留其文本内容（去掉标签本身）
+        return ""
+
+    sanitized = _TAG_RE.sub(_replace, raw_html)
+    return sanitized
+
+
+def generate_html_from_markdown(md_file_path: str, allowed_base_dir: str = "posts") -> str:
     """
     Convert Markdown file to HTML with caching mechanism and enhanced styling.
 
     Args:
         md_file_path: Path to the Markdown file
+        allowed_base_dir: 允许读取的目录（必须包含该文件），用于路径逃逸防护
 
     Returns:
         str: Path to generated HTML file if successful, empty string otherwise
     """
+    # 路径逃逸防护：文件必须位于 allowed_base_dir 目录内
+    try:
+        base_real = os.path.realpath(allowed_base_dir)
+        file_real = os.path.realpath(md_file_path)
+        if not (file_real == base_real or file_real.startswith(base_real + os.sep)):
+            print(f"Path escape blocked: {md_file_path}")
+            return ""
+    except Exception as e:
+        print(f"Path validation error: {str(e)}")
+        return ""
+
     # Validate input file
     if not os.path.isfile(md_file_path):
         return ""
@@ -41,6 +110,8 @@ def generate_html_from_markdown(md_file_path: str) -> str:
         with open(md_file_path, "r", encoding="utf-8") as f:
             md_content = f.read()
         html_content = markdown.markdown(md_content, extensions=["fenced_code", "tables"])
+        # 消毒：移除危险标签与事件属性，防止存储型 XSS / SSTI 载荷被注入
+        html_content = sanitize_html_content(html_content)
 
         full_html = f"""<!DOCTYPE html>
         <html>

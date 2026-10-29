@@ -52,6 +52,8 @@ def _snapshot_system() -> Dict[str, Any]:
         out["source"] = "psutil"
         return out
     except Exception:
+        # 有意忽略：性能采样失败时该指标缺省（上层以缺字段呈现）；
+        # 观测系统自身故障不再写日志，避免"记日志失败→再记日志"的递归放大
         pass
 
     if os.name == "nt":
@@ -84,6 +86,8 @@ def _snapshot_system() -> Dict[str, Any]:
                 out["vms_mb"] = round(counters.PrivateUsage / 1024 / 1024, 2)
                 out["source"] = "windows_psapi"
         except Exception:
+            # 有意忽略：Windows 兼容采样失败时该指标缺省（同 psutil 分支，
+            # 观测系统自身故障不写日志防递归放大）
             pass
 
     return out
@@ -121,6 +125,7 @@ def setup_performance_logging(
             try:
                 handler.close()
             except Exception:
+                # 有意忽略：观测系统自身清理失败不影响重装 handler 的主流程
                 pass
 
         try:

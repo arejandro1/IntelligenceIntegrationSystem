@@ -1,6 +1,6 @@
 import re
 import unicodedata
-from typing import Optional, Literal
+from typing import Literal
 
 try:
     from typing import TypeAlias
@@ -18,14 +18,16 @@ def sanitize_unicode_string(
     max_length: int = 10240,
     normalize_form: NormalizationForm = 'NFKC',
     allow_emoji: bool = False
-) -> Optional[str]:
+) -> str:
     """
     Sanitizes and cleans input string by removing Unicode variation selectors,
     combining characters, and other potentially dangerous Unicode features.
 
     Args:
         text: Input string to be sanitized
-        max_length: Maximum allowed input length (defense against bomb attacks)
+        max_length: Maximum allowed length (defense against bomb attacks).
+                    Input longer than this is TRUNCATED to max_length,
+                    not rejected.
         normalize_form: Unicode normalization form (NFKC recommended). This comments
                         NFC - Normalization Form C
                         NFD - Normalization Form D
@@ -34,13 +36,14 @@ def sanitize_unicode_string(
         allow_emoji: Whether to preserve emoji characters
 
     Returns:
-        Sanitized string or None if input exceeds max_length
+        Sanitized string. Never returns None: over-length input is
+        truncated first (see max_length), then normalized and cleaned.
 
     Raises:
         ValueError: If invalid normalization form specified
     """
 
-    # Defense against character bomb attacks
+    # Defense against character bomb attacks: 超长输入直接截断（不返回 None）
     if len(text) > max_length:
         text = text[:max_length]
 
@@ -54,17 +57,16 @@ def sanitize_unicode_string(
     variation_selector_ranges = (
         r'\u180B-\u180D'                    # Mongolian variation selectors
         r'\uFE00-\uFE0F'                    # Unicode variation selectors
-        r'[\uDB40-\uDBFF][\uDC00-\uDFFF]'   # Surrogate pairs handling
     )
 
-    emoji_block = (r'\u1F000-\u1FAFF'   # Basic block
+    emoji_block = (r'\U0001F000-\U0001FAFF'  # Basic block (P0-5: 改为 \\U 8位格式)   # Basic block
                    r'\u231A-\u231B'     # Watch symbols
                    r'\u23E9-\u23FF'     # Control symbols
                    ) if not allow_emoji else ''
 
     danger_pattern = re.compile(
         r'['
-        r'\u0000-\u001F\u007F-\u009F' + # Control characters
+        r'\u0000-\u0008\u000B-\u000C\u000E-\u001F' + # Control characters (P0-5: 排除 \\t\\n\\r) + # Control characters
         r'\u0300-\u036F' +              # Combining diacritics
         r'\u200B-\u200D\u202A-\u202E' + # Zero-width/control characters
         r'\uFFF0-\uFFFF'                # Special purpose characters

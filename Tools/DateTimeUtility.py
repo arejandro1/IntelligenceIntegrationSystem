@@ -28,6 +28,21 @@ DEFAULT_TIME_FORMAT = "%H:%M:%S"
 DEFAULT_DATE_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
+# 常见时区缩写 → UTC 偏移（小时）。
+# 注意：CST 有歧义（中国标准时间 +8 / 美国中部时间 -6），
+# 本系统情报源以中文/亚太媒体为主，按上下文默认取 +8。
+TZ_ABBR_OFFSETS = {
+    'UTC': 0, 'GMT': 0,
+    'JST': 9, 'KST': 9,
+    'MSK': 3,
+    'EST': -5, 'EDT': -4,
+    'PST': -8, 'PDT': -7,
+    'CET': 1, 'CEST': 2,
+    'BST': 1,
+    'CST': 8,
+}
+
+
 def get_aware_time() -> datetime.datetime:
     """
     Get the current time as a timezone-aware datetime object in the system's local timezone.
@@ -170,6 +185,10 @@ def any_time_to_time_str(dt: Union[datetime.datetime, datetime.date, int, float,
 
 def time_str_to_datetime(text: str) -> Optional[datetime.datetime]:
     """解析字符串为datetime对象，保留原始时区信息"""
+    # P0-4b 修复: 添加类型检查，避免非字符串输入导致 AttributeError
+    # 与 _process_appendix_time 的 isinstance 检查配合，避免伴生地雷
+    if not isinstance(text, str):
+        return None
     text = text.strip()
     if not text:
         logger.warning("Received empty string input")
@@ -193,6 +212,11 @@ def time_str_to_datetime(text: str) -> Optional[datetime.datetime]:
             logger.warning(f"ISO format parsing failed: {str(e)}")
 
     # 3. 尝试常见日期格式（无时区）
+    # P-review 修复：原实现剥离尾部时区缩写（JST/MSK 等）后按本地时区解释，
+    # 导致与真实发布时间系统性偏移数小时。现在识别常见时区缩写并解析为
+    # aware datetime；识别不了的缩写按 UTC 处理（不再跟随服务器本地时区）。
+    tz_abbr_match = re.search(r"\s*([A-Z]{3,4})\s*$", text)
+    tz_abbr = tz_abbr_match.group(1) if tz_abbr_match else None
     cleaned_text = re.sub(r"\s*(?:[A-Z]{3,4})\s*$", "", text)
     formats = [
         '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y%m%dT%H%M%S',
@@ -212,9 +236,19 @@ def time_str_to_datetime(text: str) -> Optional[datetime.datetime]:
                 dt = dt.replace(year=now.year, month=now.month, day=now.day)
                 logger.info("Time-only input defaulted to current date")
 
-            # 返回naive datetime对象（无时区）
+            # 尾部时区缩写 → aware datetime；无时区缩写则维持 naive（保持既有行为）
+            if tz_abbr:
+                if tz_abbr in TZ_ABBR_OFFSETS:
+                    offset = datetime.timedelta(hours=TZ_ABBR_OFFSETS[tz_abbr])
+                    dt = dt.replace(tzinfo=datetime.timezone(offset, tz_abbr))
+                else:
+                    # 识别不了的时区缩写：按 UTC 解释，避免按服务器本地时区误读
+                    logger.warning(f"Unrecognized timezone abbreviation '{tz_abbr}', interpreting as UTC: {text}")
+                    dt = dt.replace(tzinfo=datetime.timezone.utc)
+
             return dt
         except ValueError:
+            # 多格式逐个尝试解析链：本格式不匹配换下一格式（有意继续）
             continue
 
     logger.error(f"All parsing attempts failed for: {text}")

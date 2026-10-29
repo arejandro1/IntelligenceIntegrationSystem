@@ -26,6 +26,9 @@ class SourceEntry(BaseModel):
     crawler_task: Optional[str] = Field(None, description="关联爬虫任务模块名")
     concurrency: CrawlerConcurrency = Field(default_factory=lambda: CrawlerConcurrency())
     tags: List[str] = Field(default_factory=list, description="来源标签")
+    # M3 接线新增：文章页（informant）域名列表，用于爬虫不传 source 字段时的反查兜底。
+    # 不同来源之间不得重叠，否则反查视为歧义而拒绝（fail-closed）。
+    informant_domains: List[str] = Field(default_factory=list, description="文章 URL 域名（预筛反查用）")
 
 
 class PreFilterResult(BaseModel):

@@ -66,8 +66,9 @@ def notify(message: str, timeout_sec: float = 1.0) -> bool:
         if sock is not None:
             try:
                 sock.close()
-            except Exception:
-                pass
+            except Exception as e:
+                # 通知失败路径上的关闭失败无需处理（socket 已不可用）
+                logger.debug(f"Close systemd notify socket failed: {e}")
 
 
 def notify_ready() -> bool:

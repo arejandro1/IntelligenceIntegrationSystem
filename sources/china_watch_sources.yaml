@@ -1,6 +1,7 @@
 # M2: 美国涉华公开信息来源注册表
 # SourceRegistry 唯一数据源，所有来源必须在此注册
-# M4 启用首批 8 个来源时将 enabled 改为 true
+# 注意：当前 enabled 状态为实际部署配置；新增来源时默认 enabled:false，
+# 经采集验证后再改为 true。
 
 sources:
   - source_id: voa
@@ -12,6 +13,7 @@ sources:
     is_priority: true
     crawler_task: task_crawl_voanews
     tags: [美国, 官方媒体, 中文]
+    informant_domains: [voachinese.com, voanews.com]
 
   - source_id: bbc
     name: BBC News
@@ -22,6 +24,7 @@ sources:
     is_priority: true
     crawler_task: task_crawl_bbc
     tags: [英国, 公共广播, 英文]
+    informant_domains: [bbc.com, bbc.co.uk, bbci.co.uk]
 
   - source_id: nhk
     name: NHK World
@@ -32,6 +35,7 @@ sources:
     is_priority: false
     crawler_task: task_crawl_nhk_ic
     tags: [日本, 公共广播, 英文]
+    informant_domains: [nhk.or.jp]
 
   - source_id: france24
     name: France24
@@ -42,6 +46,7 @@ sources:
     is_priority: false
     crawler_task: task_crawl_france24
     tags: [法国, 国际媒体, 英文]
+    informant_domains: [france24.com]
 
   - source_id: dw
     name: Deutsche Welle
@@ -52,6 +57,7 @@ sources:
     is_priority: false
     crawler_task: task_crawl_dw
     tags: [德国, 国际媒体, 英文]
+    informant_domains: [dw.com]
 
   - source_id: rfi
     name: RFI English
@@ -62,6 +68,7 @@ sources:
     is_priority: false
     crawler_task: task_crawl_rfi
     tags: [法国, 国际媒体, 英文]
+    informant_domains: [rfi.fr]
 
   - source_id: aljazeera
     name: Al Jazeera
@@ -72,6 +79,7 @@ sources:
     is_priority: false
     crawler_task: task_crawl_aljazeera
     tags: [卡塔尔, 国际媒体, 英文]
+    informant_domains: [aljazeera.com]
 
   - source_id: abc_au
     name: ABC News (Australia)
@@ -82,6 +90,7 @@ sources:
     is_priority: false
     crawler_task: task_crawl_abc
     tags: [澳大利亚, 公共广播, 英文]
+    informant_domains: [abc.net.au]
 
   - source_id: cbc
     name: CBC News
@@ -92,6 +101,7 @@ sources:
     is_priority: false
     crawler_task: task_crawl_cbc
     tags: [加拿大, 公共广播, 英文]
+    informant_domains: [cbc.ca]
 
   - source_id: chinanews
     name: China News Service
@@ -102,6 +112,7 @@ sources:
     is_priority: true
     crawler_task: task_crawl_chinanews
     tags: [中国, 官方媒体, 英文]
+    informant_domains: [ecns.cn, chinanews.com]
 
   - source_id: elpais
     name: El País
@@ -112,6 +123,7 @@ sources:
     is_priority: false
     crawler_task: task_crawl_elpais
     tags: [西班牙, 国际媒体, 英文]
+    informant_domains: [elpais.com]
 
   - source_id: investing
     name: Investing.com
@@ -122,6 +134,7 @@ sources:
     is_priority: false
     crawler_task: task_crawl_investing
     tags: [财经, 国际, 英文]
+    informant_domains: [investing.com]
 
   - source_id: news_cn
     name: China News (中文)
@@ -132,6 +145,7 @@ sources:
     is_priority: true
     crawler_task: task_crawl_news_cn
     tags: [中国, 官方媒体, 中文]
+    informant_domains: [chinanews.com.cn]
 
   - source_id: ntv
     name: NTV Japan
@@ -142,6 +156,7 @@ sources:
     is_priority: false
     crawler_task: task_crawl_ntv
     tags: [日本, 商业广播, 英文]
+    informant_domains: [ntv.co.jp]
 
   - source_id: tass
     name: TASS News
@@ -152,6 +167,7 @@ sources:
     is_priority: true
     crawler_task: task_crawl_tass
     tags: [俄罗斯, 官方媒体, 英文]
+    informant_domains: [tass.com]
 
   - source_id: yna
     name: Yonhap News
@@ -162,6 +178,7 @@ sources:
     is_priority: false
     crawler_task: task_crawl_yna
     tags: [韩国, 官方媒体, 英文]
+    informant_domains: [yna.co.kr]
 
   - source_id: aa
     name: Anadolu Agency
@@ -172,3 +189,4 @@ sources:
     is_priority: false
     crawler_task: task_crawl_aa
     tags: [土耳其, 官方媒体, 英文]
+    informant_domains: [aa.com.tr]
